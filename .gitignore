@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Builds
+frontend/dist/
+backend/logs/
+
+# Env (never commit real secrets)
+.env
+frontend/.env
+backend/.env
+
+# Editor / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Temp sandbox output (compiler execution, Phase 6)
+.tmp/
+sandbox/

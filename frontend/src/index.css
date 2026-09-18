@@ -1,0 +1,114 @@
+@import "tailwindcss";
+
+/* Enables `light:` variants for the few accents that need per-theme contrast tweaks. */
+@custom-variant light (&:where(.light, .light *));
+
+@theme {
+  /* Surfaces — dark defaults, `.light` overrides below */
+  --color-base: #0b0d12;
+  --color-sunken: #080a0f;
+  --color-panel: #10131a;
+  --color-raise: #1a2030;
+  --color-code: #05070c;
+  --color-edge: #1c2233;
+  --color-edge2: #2a3348;
+
+  /* Text */
+  --color-ink: #f8fafc;
+  --color-body: #cbd5e1;
+  --color-muted: #94a3b8;
+  --color-faint: #64748b;
+
+  /* Accents */
+  --color-accent: #2dd4bf;
+  --color-accent-2: #8b5cf6;
+  --color-mint: #5eead4;
+
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Light theme: same semantic tokens, light values. */
+.light {
+  --color-base: #edf1f6;
+  --color-sunken: #ffffff;
+  --color-panel: #ffffff;
+  --color-raise: #ffffff;
+  --color-code: #0f172a;
+  --color-edge: #e2e8f0;
+  --color-edge2: #cbd5e1;
+
+  --color-ink: #0f172a;
+  --color-body: #334155;
+  --color-muted: #64748b;
+  --color-faint: #94a3b8;
+
+  --color-mint: #0f766e;
+
+  color-scheme: light;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-base);
+  color: var(--color-body);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Subtle scrollbar for IDE panels */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--color-edge2);
+  border-radius: 8px;
+  border: 2px solid var(--color-base);
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.code-font {
+  font-family: var(--font-mono);
+}
+
+/* Temporary AST-selection flash inside Monaco. */
+.codexa-highlight {
+  background: rgba(45, 212, 191, 0.28);
+}
+
+.panel {
+  background: var(--color-panel);
+  border: 1px solid var(--color-edge);
+  border-radius: 0.75rem;
+}
+
+.light .panel {
+  box-shadow: 0 1px 2px rgb(15 23 42 / 0.06);
+}
+
+.fade-in {
+  animation: fadeUp 0.5s ease both;
+}
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
