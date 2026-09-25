@@ -49,11 +49,11 @@ const validators = {
       required: ['userId'],
       properties: {
         userId: { bsonType: 'objectId' },
-        projectId: { bsonType: 'objectId' },
+        projectId: { bsonType: ['objectId', 'null'] },
+        sourceCode: { bsonType: 'string', maxLength: 20000 },
+        language: { bsonType: 'string' },
         diagnostics: { bsonType: 'array' },
-        compiler: { bsonType: 'object' },
-        education: { bsonType: 'object' },
-        ai: { bsonType: 'object' },
+        stats: { bsonType: 'object' },
         createdAt: { bsonType: 'date' },
       },
     },
@@ -71,6 +71,23 @@ const validators = {
       },
     },
   },
+  submissions: {
+    $jsonSchema: {
+      bsonType: 'object',
+      required: ['userId', 'problemId'],
+      properties: {
+        userId: { bsonType: 'objectId' },
+        problemId: { bsonType: 'string' },
+        language: { bsonType: 'string' },
+        sourceCode: { bsonType: 'string', maxLength: 200000 },
+        verdict: { bsonType: 'string' },
+        passed: { bsonType: ['int', 'long', 'double'] },
+        total: { bsonType: ['int', 'long', 'double'] },
+        timeMs: { bsonType: ['int', 'long', 'double'] },
+        createdAt: { bsonType: 'date' },
+      },
+    },
+  },
 };
 
 const indexes = {
@@ -81,6 +98,10 @@ const indexes = {
     [{ projectId: 1 }, { name: 'by_project' }],
   ],
   practiceattempts: [[{ userId: 1, createdAt: -1 }, { name: 'by_user' }]],
+  submissions: [
+    [{ userId: 1, createdAt: -1 }, { name: 'by_user' }],
+    [{ userId: 1, problemId: 1 }, { name: 'by_user_problem' }],
+  ],
 };
 
 async function ensureCollection(db, name) {

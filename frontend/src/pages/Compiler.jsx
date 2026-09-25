@@ -1,27 +1,38 @@
-import { AlertTriangle, Eraser, FolderOpen, Play, Save, ScanSearch } from 'lucide-react';
+import { Eraser, FolderOpen, Play, Redo2, Save, ScanSearch, Trash2, Undo2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import AiDetective from '../components/AiDetective';
 import AstViewer from '../components/AstViewer';
 import CodeEditor from '../components/CodeEditor';
+import OutputViewer from '../components/OutputViewer';
+import PipelineViewer from '../components/PipelineViewer';
 import SymbolsTable from '../components/SymbolsTable';
+import TacViewer from '../components/TacViewer';
 import TokenTable from '../components/TokenTable';
 import { Badge, Button, EmptyState } from '../components/ui';
-import { analyzeSource, getTokens } from '../services/api';
-import { CPP_SAMPLES } from '../utils/samples';
+import { useAuth } from '../context/AuthContext';
+import useCodeHistory from '../hooks/useCodeHistory';
+import { analyzeFull, createProject, deleteProject, generateTAC, getProjects, getTokens, runCode, saveHistory, updateProject } from '../services/api';
+import { LANGUAGE_META, SAMPLES_BY_LANG } from '../utils/samples';
+import { loadEditorPrefs } from '../utils/editorPrefs';
 
-const TABS = ['Output', 'Diagnostics', 'Tokens', 'AST', 'Symbols', 'Intermediate Code'];
+const TABS = ['Output', 'Diagnostics', 'Tokens', 'AST', 'Symbols', 'Intermediate Code', 'Pipeline'];
 const LANGUAGES = [
-  { id: 'cpp', label: 'C++', enabled: true },
-  { id: 'c', label: 'C (soon)', enabled: false },
-  { id: 'java', label: 'Java (soon)', enabled: false },
+  { id: 'cpp', label: 'C++' },
+  { id: 'c', label: 'C' },
+  { id: 'java', label: 'Java' },
+  { id: 'python', label: 'Python' },
+  { id: 'javascript', label: 'JavaScript' },
 ];
 
 export default function Compiler() {
-  const [code, setCode] = useState(CPP_SAMPLES.hello.code);
+  const { user } = useAuth();
+  const { code, setCode, undo, redo, canUndo, canRedo } = useCodeHistory(SAMPLES_BY_LANG.cpp.hello.code);
   const [sampleKey, setSampleKey] = useState('hello');
   const [tab, setTab] = useState('Output');
   const [language, setLanguage] = useState('cpp');
-  const [status, setStatus] = useState('Ready — lexer is live in the Tokens tab; parsing arrives in Phase 4.');
+  const [status, setStatus] = useState('Ready — press Analyze for tokens, AST, symbols and diagnostics.');
   const [cursor, setCursor] = useState({ line: 1, column: 1 });
+  const [editorPrefs] = useState(loadEditorPrefs);
   const [lexResult, setLexResult] = useState(null);
   const [lexLoading, setLexLoading] = useState(false);
   const [lexError, setLexError] = useState(null);
@@ -31,22 +42,164 @@ export default function Compiler() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState(null);
   const [selectedRange, setSelectedRange] = useState(null);
+  const [tacResult, setTacResult] = useState(null);
+  const [tacLoading, setTacLoading] = useState(false);
+  const [tacError, setTacError] = useState(null);
+  const [tacedCode, setTacedCode] = useState(null);
+  const tacStale = tacResult !== null && tacedCode !== code;
+  const [runResult, setRunResult] = useState(null);
+  const [runLoading, setRunLoading] = useState(false);
+  const [runError, setRunError] = useState(null);
+  const [runCode_state, setRunCode] = useState(null);
+  const runStale = runResult !== null && runCode_state !== code;
+  const [stdin, setStdin] = useState('');
+  const [selectedDiagnostic, setSelectedDiagnostic] = useState(null);
+  // Project state
+  const [projects, setProjects] = useState([]);
+  const [currentProjectId, setCurrentProjectId] = useState(null);
+  const [currentProjectTitle, setCurrentProjectTitle] = useState('');
 
+  const samples = SAMPLES_BY_LANG[language] ?? SAMPLES_BY_LANG.cpp;
+  const meta = LANGUAGE_META[language] ?? LANGUAGE_META.cpp;
   const lineCount = code.split('\n').length;
-  const isDirty = code !== CPP_SAMPLES[sampleKey].code;
+  const isDirty = sampleKey && samples[sampleKey] ? code !== samples[sampleKey].code : code.length > 0;
+
+  const clearResults = () => {
+    setLexResult(null);
+    setLexedCode(null);
+    setAnalysis(null);
+    setTacResult(null);
+    setTacedCode(null);
+    setRunResult(null);
+    setRunCode(null);
+    setSelectedDiagnostic(null);
+    setSelectedRange(null);
+  };
+
+  const handleLanguageChange = (next) => {
+    if (next === language) return;
+    setLanguage(next);
+    const nextSamples = SAMPLES_BY_LANG[next] ?? SAMPLES_BY_LANG.cpp;
+    setSampleKey('hello');
+    setCode(nextSamples.hello.code);
+    setCurrentProjectId(null);
+    setCurrentProjectTitle('');
+    clearResults();
+    setStatus(`Switched to ${LANGUAGE_META[next]?.label ?? next} — sample loaded. Press Analyze or Run.`);
+  };
 
   const loadSample = (key) => {
+    if (!samples[key]) return;
     setSampleKey(key);
-    setCode(CPP_SAMPLES[key].code);
-    setStatus(`Loaded sample: ${CPP_SAMPLES[key].label}`);
+    setCode(samples[key].code);
+    setCurrentProjectId(null);
+    setCurrentProjectTitle('');
+    setStatus(`Loaded sample: ${samples[key].label} (${meta.label})`);
   };
 
   const reset = () => {
-    setCode(CPP_SAMPLES[sampleKey].code);
-    setStatus('Editor reset to the active sample.');
+    if (sampleKey && samples[sampleKey]) {
+      setCode(samples[sampleKey].code);
+      setStatus('Editor reset to the active sample.');
+    } else {
+      setCode(samples.hello.code);
+      setSampleKey('hello');
+      setStatus('Editor reset to the default sample.');
+    }
   };
 
-  const notReady = (name) => setStatus(`${name} is not wired yet — lands in its phase (see Docs). No action was taken.`);
+  // Pick up code handed off from AI Studio / Problems ("Open in Compiler").
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('codexa_handoff');
+      if (!raw) return;
+      const h = JSON.parse(raw);
+      if (Date.now() - (h.at || 0) > 5 * 60 * 1000) return;
+      if (h.language && SAMPLES_BY_LANG[h.language]) setLanguage(h.language);
+      if (typeof h.code === 'string' && h.code.length > 0) {
+        setCode(h.code);
+        setSampleKey(null);
+        setCurrentProjectId(null);
+        setCurrentProjectTitle('');
+        clearResults();
+        setStatus('Loaded code from AI Studio — press Analyze or Run.');
+      }
+      localStorage.removeItem('codexa_handoff');
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load projects from API
+  const loadProjects = async () => {
+    if (!user) return;
+    try {
+      const body = await getProjects();
+      if (body.success) setProjects(body.data);
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => { loadProjects(); }, [user]);
+
+  // Load a project into the editor
+  const loadProject = async (id) => {
+    try {
+      const { data } = await import('../services/api').then((m) => m.default.get(`/projects/${id}`));
+      if (data.success) {
+        const lang = SAMPLES_BY_LANG[data.data.language] ? data.data.language : 'cpp';
+        setLanguage(lang);
+        setCode(data.data.sourceCode);
+        setCurrentProjectId(data.data._id);
+        setCurrentProjectTitle(data.data.title);
+        setSampleKey(null);
+        clearResults();
+        setStatus(`Loaded project: ${data.data.title}`);
+      }
+    } catch (err) {
+      setStatus(`Failed to load project: ${err.message}`);
+    }
+  };
+
+  // Save current code as a project
+  const handleSave = async () => {
+    if (!user) {
+      setStatus('Sign in to save projects.');
+      return;
+    }
+    try {
+      if (currentProjectId) {
+        await updateProject(currentProjectId, { sourceCode: code, language });
+        setStatus(`Saved project: ${currentProjectTitle}`);
+      } else {
+        const title = currentProjectTitle || prompt('Project name:', 'Untitled');
+        if (!title) return;
+        const body = await createProject({ title, language, sourceCode: code });
+        if (body.success) {
+          setCurrentProjectId(body.data._id);
+          setCurrentProjectTitle(title);
+          setStatus(`Created project: ${title}`);
+          loadProjects();
+        }
+      }
+    } catch (err) {
+      setStatus(`Save failed: ${err.message}`);
+    }
+  };
+
+  // Delete a project
+  const handleDeleteProject = async (id) => {
+    if (!confirm('Delete this project?')) return;
+    try {
+      await deleteProject(id);
+      if (currentProjectId === id) {
+        setCurrentProjectId(null);
+        setCurrentProjectTitle('');
+      }
+      loadProjects();
+      setStatus('Project deleted.');
+    } catch (err) {
+      setStatus(`Delete failed: ${err.message}`);
+    }
+  };
 
   const runLexer = async () => {
     setLexLoading(true);
@@ -67,36 +220,57 @@ export default function Compiler() {
     }
   };
 
-  // Ctrl/Cmd+S is intercepted so the browser doesn't save the page;
-  // real project saving arrives in Phase 9.
+  // Ctrl/Cmd+Z/Y for undo/redo, Ctrl+S intercepted, Ctrl+Enter for analyze.
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        notReady('Save');
+        handleSave();
       }
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
         analyzeRef.current?.();
       }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+        if (document.activeElement?.closest?.('.monaco-editor')) return;
+        e.preventDefault();
+        undo();
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+        if (document.activeElement?.closest?.('.monaco-editor')) return;
+        e.preventDefault();
+        redo();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, []);
+  }, [undo, redo]);
 
   const runAnalyze = async () => {
     setAnalyzing(true);
     setAnalysisError(null);
     try {
-      const body = await analyzeSource(code, language);
+      const body = await analyzeFull(code, language);
       setAnalysis(body.data);
-      const { nodes, errors, warnings, semanticSkipped } = body.data.stats;
+      setTacResult(body.data);
+      setTacedCode(code);
+      const { nodes, errors, warnings, semanticSkipped, instructions: instrCount } = body.data.stats;
       setStatus(
-        `Analysis: ${nodes} AST nodes, ${errors} errors, ${warnings} warnings` +
+        `Analysis: ${nodes} AST nodes, ${instrCount} TAC instructions, ${errors} errors, ${warnings} warnings` +
         (semanticSkipped ? ' (semantic skipped: fix syntax first)' : '') +
         '.',
       );
       if (errors > 0) setTab('Diagnostics');
+      // Phase 9: persist a light history entry (fire-and-forget, signed in only).
+      if (user) {
+        saveHistory({
+          projectId: currentProjectId,
+          sourceCode: code,
+          language,
+          diagnostics: body.data.diagnostics ?? [],
+          stats: { ...(body.data.stats ?? {}), kind: 'analyze' },
+        }).catch(() => { /* history is best-effort */ });
+      }
     } catch (err) {
       const msg = err?.response?.data?.error?.message || err.message || 'unknown error';
       setAnalysisError(msg);
@@ -107,6 +281,69 @@ export default function Compiler() {
   };
   const analyzeRef = useRef(null);
   analyzeRef.current = runAnalyze;
+
+  const runTac = async () => {
+    setTacLoading(true);
+    setTacError(null);
+    try {
+      const body = await generateTAC(code, language);
+      setTacResult(body.data);
+      setTacedCode(code);
+      const { instructions, errors, warnings } = body.data.stats;
+      setStatus(`TAC: ${instructions} instructions, ${errors} errors, ${warnings} warnings.`);
+      setTab('Intermediate Code');
+    } catch (err) {
+      const msg = err?.response?.data?.error?.message || err.message || 'unknown error';
+      setTacError(msg);
+      setStatus(`TAC generation failed: ${msg}`);
+    } finally {
+      setTacLoading(false);
+    }
+  };
+
+  const handleRun = async () => {
+    setRunLoading(true);
+    setRunError(null);
+    try {
+      const body = await runCode(code, language, stdin);
+      setRunResult(body.data);
+      setRunCode(code);
+      const { compile, run } = body.data;
+      if (!compile.success) {
+        setStatus(`Compile failed: ${compile.diagnostics.length} diagnostic(s).`);
+        setTab('Output');
+      } else if (run.exitCode === 0) {
+        setStatus(`Program ran successfully in ${run.elapsedMs} ms (exit 0).`);
+        setTab('Output');
+      } else {
+        setStatus(`Program exited with code ${run.exitCode}${run.timedOut ? ' (timed out)' : ''}.`);
+        setTab('Output');
+      }
+      // Phase 9: persist a light history entry (fire-and-forget, signed in only).
+      if (user) {
+        saveHistory({
+          projectId: currentProjectId,
+          sourceCode: code,
+          language,
+          diagnostics: compile.diagnostics ?? [],
+          stats: { kind: 'run', compileSuccess: compile.success, exitCode: run.exitCode, timedOut: run.timedOut },
+        }).catch(() => { /* history is best-effort */ });
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.error?.message || err.message || 'unknown error';
+      setRunError(msg);
+      setStatus(`Run failed: ${msg}`);
+    } finally {
+      setRunLoading(false);
+    }
+  };
+
+  // Called when user approves an AI fix
+  const handleApplyFix = (verifiedCode) => {
+    setCode(verifiedCode);
+    setStatus('Applied AI fix. Code updated — press Analyze to re-check.');
+    setSelectedDiagnostic(null);
+  };
 
   // Squiggles in Monaco, straight from real diagnostics.
   const markers = (analysis?.diagnostics ?? []).map((d) => ({
@@ -126,27 +363,38 @@ export default function Compiler() {
       <div className="panel flex flex-wrap items-center gap-2 p-3">
         <select
           value={language}
-          onChange={(e) => setLanguage(e.target.value)}
+          onChange={(e) => handleLanguageChange(e.target.value)}
           className="rounded-lg border border-edge2 bg-sunken px-3 py-2 text-sm text-body"
           aria-label="Language selector"
         >
           {LANGUAGES.map((l) => (
-            <option key={l.id} value={l.id} disabled={!l.enabled}>{l.label}</option>
+            <option key={l.id} value={l.id}>{l.label}</option>
           ))}
         </select>
-        <Badge tone="amber">C++ only in v1 · Java/C later</Badge>
+        {meta.fullPipeline ? (
+          <Badge tone="teal">Full pipeline: tokens · AST · TAC · run</Badge>
+        ) : (
+          <Badge tone="amber">Tokens + Run supported · AST/TAC are C/C++-only</Badge>
+        )}
         <div className="mx-1 hidden h-6 w-px bg-edge2 sm:block" />
         <Button size="sm" onClick={runAnalyze} disabled={analyzing}>
           <ScanSearch size={15} /> {analyzing ? 'Analyzing…' : 'Analyze'}
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => notReady('Run')}>
-          <Play size={15} /> Run
+        <Button size="sm" variant="secondary" onClick={handleRun} disabled={runLoading}>
+          <Play size={15} /> {runLoading ? 'Running…' : 'Run'}
         </Button>
         <Button size="sm" variant="secondary" onClick={reset}>
           <Eraser size={15} /> Reset
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => notReady('Save')}>
-          <Save size={15} /> Save
+        <Button size="sm" variant="secondary" onClick={handleSave}>
+          <Save size={15} /> {currentProjectId ? 'Save' : 'Save as…'}
+        </Button>
+        <div className="mx-1 hidden h-6 w-px bg-edge2 sm:block" />
+        <Button size="sm" variant="secondary" onClick={undo} disabled={!canUndo} title="Undo (Ctrl+Z)">
+          <Undo2 size={15} />
+        </Button>
+        <Button size="sm" variant="secondary" onClick={redo} disabled={!canRedo} title="Redo (Ctrl+Y)">
+          <Redo2 size={15} />
         </Button>
         <span className="ml-auto hidden items-center gap-2 text-xs text-muted lg:flex" role="status">
           <span className="size-2 rounded-full bg-teal-400" />
@@ -159,8 +407,8 @@ export default function Compiler() {
         <aside className="panel hidden flex-col p-3 lg:flex">
           <p className="px-1 text-xs font-semibold uppercase tracking-wider text-muted">Explorer</p>
           <div className="mt-2 space-y-1">
-            <p className="px-2 pt-2 text-[11px] uppercase tracking-wider text-faint">Sample programs</p>
-            {Object.entries(CPP_SAMPLES).map(([key, s]) => (
+            <p className="px-2 pt-2 text-[11px] uppercase tracking-wider text-faint">Sample programs · {meta.label}</p>
+            {Object.entries(samples).map(([key, s]) => (
               <button
                 key={key}
                 onClick={() => loadSample(key)}
@@ -172,10 +420,35 @@ export default function Compiler() {
               </button>
             ))}
             <p className="px-2 pt-3 text-[11px] uppercase tracking-wider text-faint">Projects</p>
-            <EmptyState
-              title="No saved projects yet"
-              hint="Project persistence with MongoDB arrives in Phase 9."
-            />
+            {user ? (
+              projects.length > 0 ? (
+                projects.map((p) => (
+                  <div key={p._id} className="group flex items-center gap-1">
+                    <button
+                      onClick={() => loadProject(p._id)}
+                      className={`flex flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors ${
+                        currentProjectId === p._id
+                          ? 'bg-teal-400/10 text-teal-300 light:text-teal-700'
+                          : 'text-muted hover:bg-ink/5 hover:text-ink'
+                      }`}
+                    >
+                      <FolderOpen size={14} /> {p.title}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteProject(p._id)}
+                      className="hidden p-1 text-muted hover:text-red-400 group-hover:block"
+                      title="Delete project"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="px-2 text-xs text-faint">No saved projects yet</p>
+              )
+            ) : (
+              <p className="px-2 text-xs text-faint">Sign in to save projects</p>
+            )}
           </div>
         </aside>
 
@@ -183,28 +456,31 @@ export default function Compiler() {
         <section className="panel flex min-h-[420px] flex-col overflow-hidden">
           <div className="flex items-center justify-between gap-2 border-b border-edge px-4 py-2">
             <p className="code-font truncate text-xs text-muted">
-              main.cpp · {lineCount} lines
+              {meta.file} · {lineCount} lines
             </p>
             <div className="flex items-center gap-2">
               {isDirty && <Badge tone="amber">Modified</Badge>}
-              <Badge tone="teal">Monaco · C++</Badge>
+              <Badge tone="teal">Monaco · {meta.label}</Badge>
             </div>
           </div>
           <CodeEditor
             value={code}
             onChange={setCode}
-            language={language}
+            language={meta.monaco}
             markers={markers}
             highlight={selectedRange}
             onCursorChange={setCursor}
             height="420px"
+            fontSize={editorPrefs.fontSize}
+            tabSize={editorPrefs.tabSize}
+            wordWrap={editorPrefs.wordWrap}
           />
           {/* VS Code-style status bar */}
           <div className="code-font flex items-center gap-4 border-t border-edge bg-sunken px-4 py-1.5 text-[11px] text-muted">
             <span>Ln {cursor.line}, Col {cursor.column}</span>
-            <span className="hidden sm:inline">Spaces: 4</span>
+            <span className="hidden sm:inline">Spaces: {editorPrefs.tabSize}</span>
             <span className="hidden sm:inline">UTF-8</span>
-            <span className="ml-auto">Ctrl+Enter: analyze · Ctrl+S: save (Phase 9)</span>
+            <span className="ml-auto">Ctrl+Enter: analyze · Ctrl+S: save · Ctrl+Z/Y: undo/redo</span>
           </div>
           {/* Bottom panel */}
           <div className="border-t border-edge">
@@ -225,11 +501,20 @@ export default function Compiler() {
             </div>
             <div className="min-h-[140px] border-t border-edge bg-sunken p-4 text-sm">
               {tab === 'Output' && (
-                <p className="flex items-start gap-2 text-muted">
-                  <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-500" />
-                  Execution is disabled in Phase 4. Sandboxed compile + run arrives in Phase 6.
-                  Press Analyze (or Ctrl+Enter) for the full educational pipeline: tokens, AST, symbols, diagnostics.
-                </p>
+                <>
+                  <label className="mb-2 block text-xs font-medium text-muted" htmlFor="compiler-stdin">
+                    Program input (stdin) — fed to your program on Run
+                  </label>
+                  <textarea
+                    id="compiler-stdin"
+                    rows={2}
+                    value={stdin}
+                    onChange={(e) => setStdin(e.target.value)}
+                    placeholder="e.g. 10&#10;1 2 3 …"
+                    className="mb-3 w-full rounded-xl border border-edge2 bg-panel px-3 py-2 font-mono text-xs text-ink outline-none placeholder:text-faint focus:border-teal-400/60"
+                  />
+                  <OutputViewer result={runResult} loading={runLoading} error={runError} stale={runStale} onRun={handleRun} />
+                </>
               )}
               {tab === 'Diagnostics' && (
                 <>
@@ -241,8 +526,16 @@ export default function Compiler() {
                   {shownDiagnostics.length > 0 ? (
                     <ul className="space-y-2">
                       {shownDiagnostics.map((d, i) => (
-                        <li key={i} className="flex flex-wrap items-center gap-2 rounded-lg border border-edge bg-panel px-3 py-2 text-[13px]">
-                          <Badge tone={d.severity === 'error' ? 'red' : 'amber'}>{d.severity}</Badge>
+                        <li
+                          key={i}
+                          onClick={() => setSelectedDiagnostic(d)}
+                          className={`flex flex-wrap items-center gap-2 rounded-lg border bg-panel px-3 py-2 text-[13px] transition-colors cursor-pointer hover:border-violet-400/50 ${
+                            selectedDiagnostic === d
+                              ? 'border-violet-400/50 bg-violet-400/10'
+                              : 'border-edge'
+                          }`}
+                        >
+                          <Badge tone={d.severity === 'error' ? 'red' : d.severity === 'warning' ? 'amber' : 'teal'}>{d.severity}</Badge>
                           <span className="code-font text-xs text-muted">{d.code}</span>
                           <span className="code-font text-xs text-faint">{d.source}/{d.phase}</span>
                           <span className="basis-full text-body sm:basis-auto">{d.message}</span>
@@ -270,44 +563,31 @@ export default function Compiler() {
                 <SymbolsTable symbols={analysis?.symbols ?? []} />
               )}
               {tab === 'Intermediate Code' && (
-                <EmptyState title="No TAC yet" hint="Three-address code generation arrives in Phase 5." />
+                <TacViewer result={tacResult} loading={tacLoading} error={tacError} stale={tacStale} onRun={runTac} />
+              )}
+              {tab === 'Pipeline' && (
+                <PipelineViewer
+                  lexResult={lexResult}
+                  analysis={analysis}
+                  tacResult={tacResult}
+                  runResult={runResult}
+                />
               )}
             </div>
           </div>
         </section>
 
-        {/* Right: AI Detective placeholder */}
+        {/* Right: AI Detective */}
         <aside className="panel flex min-h-[200px] flex-col p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted">AI Error Detective</p>
-          <EmptyState
-            title="Select a diagnostic to begin"
-            hint="Grounded explanations (beginner / intermediate / advanced) arrive in Phase 7. The AI will never edit code without approval."
-          />
-          <div className="mt-3">
-            <Button
-              variant="secondary"
-              size="sm"
-              className="w-full"
-              disabled
-              title="Available from Phase 7"
-            >
-              Explain error (Phase 7)
-            </Button>
-          </div>
-          <div className="mt-4 border-t border-edge pt-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted">AST · Symbols · Pipeline</p>
-            <p className="mt-1 text-xs leading-relaxed text-faint">
-              Interactive visualizations arrive in Phases 4–5 and 8. See the Docs page for the roadmap.
-            </p>
-          </div>
+          <AiDetective diagnostic={selectedDiagnostic} sourceCode={code} onApplyFix={handleApplyFix} />
         </aside>
       </div>
 
       {/* Mobile sample picker */}
       <div className="panel p-3 lg:hidden">
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Sample programs</p>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted">Sample programs · {meta.label}</p>
         <div className="flex flex-wrap gap-2">
-          {Object.entries(CPP_SAMPLES).map(([key, s]) => (
+          {Object.entries(samples).map(([key, s]) => (
             <Button key={key} size="sm" variant={sampleKey === key ? 'primary' : 'secondary'} onClick={() => loadSample(key)}>
               {s.label}
             </Button>

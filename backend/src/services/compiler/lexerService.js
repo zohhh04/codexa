@@ -4,10 +4,14 @@
  * (validation, HTTP) out of the engine so it stays independently testable.
  */
 const { tokenize } = require('../../../../compiler/lexer');
+const { tokenizeGeneric } = require('./genericLexer');
 
-function analyzeTokens(sourceCode) {
+function analyzeTokens(sourceCode, language = 'cpp') {
   const started = Date.now();
-  const { tokens, diagnostics } = tokenize(sourceCode);
+  const { tokens, diagnostics } =
+    language === 'java' || language === 'python' || language === 'javascript' || language === 'js'
+      ? tokenizeGeneric(sourceCode, language === 'python' ? 'python' : 'java')
+      : tokenize(sourceCode);
 
   const byType = {};
   for (const t of tokens) byType[t.type] = (byType[t.type] || 0) + 1;

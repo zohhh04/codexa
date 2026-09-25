@@ -67,9 +67,9 @@ export default function Landing() {
             Understand Your Code, <span className="bg-gradient-to-r from-teal-300 to-violet-400 bg-clip-text text-transparent light:from-teal-600 light:to-violet-600">Not Just Your Errors</span>
           </h1>
           <p className="mt-5 max-w-2xl text-base text-muted md:text-lg">
-            Codexa AI shows how your C++ is lexed, parsed, type-checked and lowered to
-            three-address code — then explains real Clang errors at your level and helps
-            you fix them safely.
+            Codexa AI shows how your C, C++, Java, Python and JavaScript code is lexed and
+            executed — generates code from a prompt, debugs real errors, explains line by line,
+            optimizes hot spots, judges DSA solutions against test cases, and tutors you like a patient teacher.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link to="/register">
@@ -87,6 +87,7 @@ export default function Landing() {
             <Badge>No fake diagnostics</Badge>
             <Badge>User-approved fixes only</Badge>
             <Badge>Sandboxed execution</Badge>
+            <Badge tone="amber">Compiler requires sign-in</Badge>
           </div>
         </div>
       </section>
@@ -94,7 +95,7 @@ export default function Landing() {
       {/* FEATURES */}
       <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6">
         <h2 className="text-2xl font-bold text-ink">Everything a compiler student needs</h2>
-        <p className="mt-1 text-sm text-muted">Built incrementally across 10 phases. Phase 1 ships the foundation below.</p>
+        <p className="mt-1 text-sm text-muted">Built incrementally across 10 phases. Phases 1–8 ship the foundation, editor, compiler pipeline, Clang sandbox, AI detective, and verification tools.</p>
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {features.map((f) => (
             <Card key={f.title} className="transition-colors hover:border-teal-400/40">
@@ -114,7 +115,7 @@ export default function Landing() {
             <h2 className="text-2xl font-bold text-ink">Compiler pipeline preview</h2>
           </div>
           <p className="mt-1 text-sm text-muted">
-            Each phase displays its real inputs and outputs. Placeholders below activate in Phases 3–7.
+            Each phase displays its real inputs and outputs. Phases 3–8 are live; placeholders below activate in Phase 9.
           </p>
           <div className="mt-6 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
             {PIPELINE_PHASES.map((p, i) => (
@@ -140,7 +141,7 @@ export default function Landing() {
         <h2 className="text-2xl font-bold text-ink">How it works</h2>
         <div className="mt-6 grid gap-4 md:grid-cols-4">
           {[
-            ['1', 'Write C++', 'Edit in the Monaco workspace with samples and projects.'],
+            ['1', 'Write code', 'Edit C, C++, Java or Python in the Monaco workspace with samples and projects.'],
             ['2', 'Analyze', 'Run the educational pipeline + sandboxed Clang diagnostics.'],
             ['3', 'Understand', 'Ask the AI Detective for level-appropriate explanations.'],
             ['4', 'Fix & verify', 'Approve a diff, re-analyze, and confirm the error is gone.'],

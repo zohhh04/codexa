@@ -2,16 +2,18 @@ import { Link } from 'react-router-dom';
 import { Badge, Card } from '../components/ui';
 
 const rows = [
-  ['Phase 1', 'Foundation + UI (this build)', 'Vite + Tailwind + Router, landing, IDE shell, Express skeleton, docs.'],
-  ['Phase 2', 'Monaco editor', 'C++ highlighting, themes, samples, editor state, reset.'],
-  ['Phase 3', 'Lexical analysis', 'Real lexer, token table with positions, lexer tests.'],
-  ['Phase 4', 'Syntax + semantics', 'Grammar, AST + visualization, symbol table, diagnostics.'],
-  ['Phase 5', 'Intermediate code', 'TAC with temporaries + precedence, tests.'],
-  ['Phase 6', 'Clang integration', 'Sandboxed compile/run, parsed diagnostics, limits.'],
-  ['Phase 7', 'AI features', 'Explain / fix / tutor with schema validation + rate limits.'],
-  ['Phase 8', 'Verification + visualization', 'Diffs, approve/reject, undo/redo, pipeline views.'],
-  ['Phase 9', 'Auth + persistence', 'JWT, MongoDB, projects, history, ownership checks.'],
-  ['Phase 10', 'Practice + polish', 'Questions, real dashboard stats, E2E tests, a11y.'],
+  ['Phase 1', 'Foundation + UI (this build)', 'Vite + Tailwind + Router, landing, IDE shell, Express skeleton, docs.', true],
+  ['Phase 2', 'Monaco editor', 'C++ highlighting, themes, samples, editor state, reset.', true],
+  ['Phase 3', 'Lexical analysis', 'Real lexer, token table with positions, lexer tests.', true],
+  ['Phase 4', 'Syntax + semantics', 'Grammar, AST + visualization, symbol table, diagnostics.', true],
+  ['Phase 5', 'Intermediate code', 'TAC with temporaries + precedence, tests.', true],
+  ['Phase 6', 'Clang integration', 'Sandboxed compile/run, parsed diagnostics, limits.', true],
+  ['Phase 7', 'AI features', 'Explain / fix / tutor with schema validation + rate limits.', true],
+  ['Phase 8', 'Verification + visualization', 'Diffs, approve/reject, undo/redo, pipeline views.', true],
+  ['Phase 9', 'Auth + persistence', 'JWT, MongoDB, projects, auto-recorded history, ownership checks.', true],
+  ['Phase 10', 'Practice + polish', '15 concept questions, picker, attempts feed the dashboard.', true],
+  ['AI Studio', 'Generate / explain / debug / optimize', 'Offline-first AI services + Mentor-backed LLM when configured.', true],
+  ['DSA Judge', 'Problems + verdicts', '15 problems, sample/edge/large tests, Accepted → Compilation Error.', true],
 ];
 
 export default function Docs() {
@@ -30,13 +32,15 @@ export default function Docs() {
       </p>
 
       <Card className="mt-6">
-        <h2 className="font-semibold text-ink">Planned C++ subset (finalized Phase 4)</h2>
+        <h2 className="font-semibold text-ink">Supported C++ subset (v1, implemented Phase 4)</h2>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
-          <li>Types: <span className="code-font text-xs">int, float, char, bool, void</span></li>
-          <li>Declarations, assignments, arithmetic / logical expressions with precedence</li>
-          <li><span className="code-font text-xs">if / else</span>, <span className="code-font text-xs">while / for</span>, blocks + nested scopes</li>
-          <li>Functions, calls, <span className="code-font text-xs">return</span></li>
-          <li>Explicitly out of scope for v1: templates, classes, pointers, STL, exceptions, preprocessor beyond <span className="code-font text-xs">#include</span></li>
+          <li>Types: <span className="code-font text-xs">int, float, char, bool, void</span> (void: function returns only)</li>
+          <li>Declarations with initializers, assignments incl. compound (<span className="code-font text-xs">+= … %=</span>)</li>
+          <li>Arithmetic / logical expressions with C precedence, unary and postfix <span className="code-font text-xs">++ --</span></li>
+          <li><span className="code-font text-xs">if / else</span>, <span className="code-font text-xs">while</span>, <span className="code-font text-xs">for</span> (incl. declared init), blocks + nested scopes, <span className="code-font text-xs">break / continue</span></li>
+          <li>Functions, calls, <span className="code-font text-xs">return</span> (no overloading, no prototypes)</li>
+          <li><span className="code-font text-xs">std::cout &lt;&lt; …</span>, <span className="code-font text-xs">std::cin &gt;&gt; …</span>, <span className="code-font text-xs">std::endl</span>, <span className="code-font text-xs">using namespace std;</span></li>
+          <li>Out of v1: arrays, structs/classes, pointers, templates, <span className="code-font text-xs">switch</span>, <span className="code-font text-xs">sizeof</span>, exceptions, member access — clear error, never silent</li>
         </ul>
       </Card>
 
@@ -51,9 +55,11 @@ export default function Docs() {
             </tr>
           </thead>
           <tbody>
-            {rows.map(([p, t, s]) => (
+            {rows.map(([p, t, s, done]) => (
               <tr key={p} className="border-t border-edge text-muted">
-                <td className="whitespace-nowrap px-4 py-2 font-medium text-mint">{p}</td>
+                <td className="whitespace-nowrap px-4 py-2 font-medium text-mint">
+                  {done && <span className="mr-1">✓</span>}{p}
+                </td>
                 <td className="px-4 py-2 text-body">{t}</td>
                 <td className="px-4 py-2">{s}</td>
               </tr>
@@ -63,9 +69,9 @@ export default function Docs() {
       </div>
 
       <p className="mt-6 text-sm text-muted">
-        Backend API contract: <Link to="/compiler" className="text-mint hover:underline">workspace</Link> calls{' '}
-        <span className="code-font text-xs">GET /api/health</span> today; compiler, AI, history and practice routes
-        arrive with their phases. Full contract lives in <span className="code-font text-xs">docs/api.md</span>.
+        Backend API contract: the <Link to="/compiler" className="text-mint hover:underline">workspace</Link> calls{' '}
+        compiler, run, AI, history, practice, problems and dashboard routes — all live.
+        Full contract lives in <span className="code-font text-xs">docs/api.md</span>.
       </p>
     </div>
   );

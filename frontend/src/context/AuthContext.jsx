@@ -1,35 +1,85 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import api from '../services/api';
 
-// Phase 1 placeholder auth store. Real JWT login lands in Phase 9.
-// Holds shape stable so later phases only swap the implementation.
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('codexa_user') || 'null');
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const loginLocal = useCallback((name, email) => {
-    // Local-only demo session until Phase 9 backend auth exists.
-    const demoUser = { name, email, demo: true };
-    localStorage.setItem('codexa_user', JSON.stringify(demoUser));
-    setUser(demoUser);
-    return demoUser;
+  // Hydrate user from token on mount
+  useEffect(() => {
+    const token = localStorage.getItem('codexa_token');
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    api
+      .get('/auth/me')
+      .then(({ data }) => {
+        if (data.success) setUser(data.data);
+        else localStorage.removeItem('codexa_token');
+      })
+      .catch(() => localStorage.removeItem('codexa_token'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const login = useCallback(async (email, password) => {
+    const { data } = await api.post('/auth/login', { email, password });
+    if (!data.success) throw new Error(data.error?.message || 'Login failed');
+    localStorage.setItem('codexa_token', data.data.token);
+    setUser(data.data.user);
+    return data.data.user;
+  }, []);
+
+  const register = useCallback(async (name, email, password) => {
+    const { data } = await api.post('/auth/register', { name, email, password });
+    if (!data.success) throw new Error(data.error?.message || 'Registration failed');
+    localStorage.setItem('codexa_token', data.data.token);
+    setUser(data.data.user);
+    return data.data.user;
   }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem('codexa_token');
-    localStorage.removeItem('codexa_user');
     setUser(null);
   }, []);
 
+  const updateProfile = useCallback(async (name) => {
+    const { data } = await api.patch('/auth/profile', { name });
+    if (!data.success) throw new Error(data.error?.message || 'Profile update failed');
+    setUser(data.data);
+    return data.data;
+  }, []);
+
+  const changePassword = useCallback(async (currentPassword, newPassword) => {
+    const { data } = await api.put('/auth/password', { currentPassword, newPassword });
+    if (!data.success) throw new Error(data.error?.message || 'Password change failed');
+    return true;
+  }, []);
+
+  const deleteAccount = useCallback(async () => {
+    const { data } = await api.delete('/auth/account');
+    if (!data.success) throw new Error(data.error?.message || 'Account deletion failed');
+    localStorage.removeItem('codexa_token');
+    setUser(null);
+    return true;
+  }, []);
+
   const value = useMemo(
-    () => ({ user, isAuthenticated: Boolean(user), loginLocal, logout }),
-    [user, loginLocal, logout],
+    () => ({
+      user,
+      setUser,
+      isAuthenticated: Boolean(user),
+      loading,
+      login,
+      register,
+      logout,
+      updateProfile,
+      changePassword,
+      deleteAccount,
+    }),
+    [user, loading, login, register, logout, updateProfile, changePassword, deleteAccount],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

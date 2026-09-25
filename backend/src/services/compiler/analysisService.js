@@ -2,10 +2,16 @@
  * Codexa AI — full educational analysis pipeline (Phase 4).
  * source → tokens → AST → symbols, with combined position-sorted diagnostics.
  * Independent of AI and of Clang: works fully offline.
+ *
+ * C and C++ share the educational C++-subset pipeline (C is largely a
+ * subset of what the grammar accepts). Java and Python get honest fallback
+ * output: real generic tokens + an INFO diagnostic explaining that the
+ * AST / symbol-table stages are C/C++-only. Nothing is faked.
  */
 const { tokenize } = require('../../../../compiler/lexer');
 const { parse } = require('../../../../compiler/parser');
 const { analyze } = require('../../../../compiler/semantic');
+const { tokenizeGeneric } = require('./genericLexer');
 
 function countNodes(node) {
   if (!node || typeof node !== 'object') return 0;
@@ -25,7 +31,45 @@ function byPosition(a, b) {
   return a.line - b.line || a.column - b.column;
 }
 
-function analyzeSource(sourceCode) {
+function fallbackAnalysis(sourceCode, language) {
+  const started = Date.now();
+  const { tokens, diagnostics: lex } = tokenizeGeneric(sourceCode, language);
+  const info = {
+    phase: 'semantic',
+    source: 'codexa',
+    severity: 'info',
+    code: 'LANG_LIMIT',
+    message:
+      language === 'python'
+        ? 'Full AST / symbol analysis is C/C++-only in v1 — Tokens and Run work for Python. Parse + TAC for Python arrives later.'
+        : 'Full AST / symbol analysis is C/C++-only in v1 — Tokens and Run work for Java. Parse + TAC for Java arrives later.',
+    line: 1,
+    column: 1,
+    endLine: 1,
+    endColumn: 2,
+  };
+  const diagnostics = [...lex, info].sort(byPosition);
+  const errors = diagnostics.filter((d) => d.severity === 'error').length;
+  const warnings = diagnostics.filter((d) => d.severity === 'warning').length;
+  return {
+    ast: { kind: 'Program', body: [], language, note: 'AST not available for this language in v1' },
+    symbols: [],
+    diagnostics,
+    stats: {
+      tokens: tokens.length,
+      nodes: 0,
+      errors,
+      warnings,
+      semanticSkipped: true,
+      elapsedMs: Date.now() - started,
+    },
+  };
+}
+
+function analyzeSource(sourceCode, language = 'cpp') {
+  if (language === 'java' || language === 'python' || language === 'javascript' || language === 'js') {
+    return fallbackAnalysis(sourceCode, language);
+  }
   const started = Date.now();
   const { tokens, diagnostics: lex } = tokenize(sourceCode);
   const { ast, diagnostics: syn } = parse(tokens);

@@ -31,8 +31,8 @@ export default function Footer() {
         <div>
           <p className="text-sm font-semibold text-body">Status</p>
           <ul className="mt-2 space-y-1 text-sm text-muted">
-            <li>Phase 1: Foundation &amp; UI — <span className="text-mint">complete</span></li>
-            <li>Lexer → Phase 3 · Parser → Phase 4</li>
+            <li>Phase 1–8: Foundation, UI, Lexer, Parser, TAC, Clang, AI, Verification — <span className="text-mint">complete</span></li>
+            <li>Next: Project persistence → Phase 9</li>
             <li>No fabricated compiler output, ever.</li>
           </ul>
         </div>

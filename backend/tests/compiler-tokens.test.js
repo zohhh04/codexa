@@ -72,7 +72,7 @@ describe('Phase 3 — POST /api/compiler/tokens', () => {
       const port = server.address().port;
       const missing = await postTokens(port, {});
       assert.strictEqual(missing.status, 400);
-      const lang = await postTokens(port, { sourceCode: 'int a;', language: 'java' });
+      const lang = await postTokens(port, { sourceCode: 'int a;', language: 'rust' });
       assert.strictEqual(lang.status, 400);
     } finally {
       server.close();

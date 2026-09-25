@@ -1,8 +1,17 @@
 const { createApp } = require('./app');
 const config = require('./config/env');
+const { connectDB } = require('./config/db');
 
-const app = createApp();
+async function main() {
+  await connectDB(config.mongodbUri);
 
-app.listen(config.port, () => {
-  console.log(`[codexa] server listening on http://localhost:${config.port} (${config.nodeEnv})`);
+  const app = createApp();
+  app.listen(config.port, () => {
+    console.log(`[codexa] server listening on http://localhost:${config.port} (${config.nodeEnv})`);
+  });
+}
+
+main().catch((err) => {
+  console.error('[codexa] server failed to start:', err.message);
+  process.exit(1);
 });

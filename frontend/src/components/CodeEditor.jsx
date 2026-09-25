@@ -64,6 +64,9 @@ export default function CodeEditor({
   onReady,
   highlight = null, // { line, column, endLine, endColumn } — reveal + flash on change
   height = '420px',
+  fontSize = 13,
+  tabSize = 4,
+  wordWrap = 'on',
 }) {
   const { theme } = useTheme();
   const editorRef = useRef(null);
@@ -163,7 +166,7 @@ export default function CodeEditor({
         </div>
       }
       options={{
-        fontSize: 13,
+        fontSize,
         fontFamily: "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace",
         fontLigatures: true,
         minimap: { enabled: false },
@@ -173,13 +176,13 @@ export default function CodeEditor({
         smoothScrolling: true,
         cursorBlinking: 'smooth',
         automaticLayout: true,
-        tabSize: 4,
+        tabSize,
         insertSpaces: true,
-        wordWrap: 'on',
+        wordWrap,
         bracketPairColorization: { enabled: true },
         guides: { bracketPairs: true },
         scrollbar: { verticalScrollbarSize: 10, horizontalScrollbarSize: 10 },
-        ariaLabel: 'C++ code editor',
+        ariaLabel: 'Code editor',
         fixedOverflowWidgets: true,
       }}
     />
