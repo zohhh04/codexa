@@ -2,7 +2,8 @@
  * Codexa AI — propose fix service (Phase 7).
  * Takes a diagnostic + source code, returns a proposed diff (never auto-applies).
  */
-const { chat, isAvailable } = require('./client');
+const { isAvailable } = require('./client');
+const { tryAI, engineOf } = require('./offline');
 
 const FIX_SYSTEM = `You are Codexa AI, an expert C++ code fixer. Your job is to propose minimal, correct fixes for compiler errors.
 
@@ -54,29 +55,28 @@ ${sourceCode}
 
 Propose a minimal fix. Return a unified diff.`;
 
-  const result = await chat(FIX_SYSTEM, userMessage);
-
-  let parsed;
-  try {
-    const jsonMatch = result.content.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const jsonStr = jsonMatch ? jsonMatch[1] : result.content;
-    parsed = JSON.parse(jsonStr.trim());
-  } catch {
-    parsed = {
-      description: 'Fix suggested',
-      diff: null,
-      confidence: 'medium',
-      explanation: result.content,
+  const ai = await tryAI(FIX_SYSTEM, userMessage, true);
+  if (ai && (ai.parsed?.description || ai.raw)) {
+    return {
+      description: ai.parsed?.description || 'Fix suggested',
+      diff: ai.parsed?.diff || null,
+      confidence: ai.parsed?.confidence || 'medium',
+      explanation: ai.parsed?.explanation || ai.raw,
+      model: ai.model,
+      aiAvailable: true,
+      engine: 'ai',
     };
   }
 
+  // Offline fallback: point at the exact line — never a 500.
+  const d = diagnostic || {};
   return {
-    description: parsed.description || 'Fix suggested',
-    diff: parsed.diff || null,
-    confidence: parsed.confidence || 'medium',
-    explanation: parsed.explanation || result.content,
-    model: result.model,
-    aiAvailable: true,
+    description: `Fix the ${d.phase ?? 'compiler'} issue on line ${d.line ?? '?'} (${d.code ?? ''}): ${d.message ?? ''}`,
+    diff: null,
+    confidence: 'low',
+    explanation: 'AI is unreachable right now. Correct the highlighted line, then press Analyze to confirm.',
+    aiAvailable: false,
+    engine: engineOf(ai),
   };
 }
 

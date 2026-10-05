@@ -351,7 +351,7 @@ const TEMPLATES = [
       javascript: `const fs = require('node:fs');\nconst r = parseFloat(fs.readFileSync(0, 'utf8').trim() || '5');\nconsole.log(Math.PI * r * r);\n`,
       java: `import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        double r = sc.hasNextDouble() ? sc.nextDouble() : 5.0;\n        System.out.println(Math.PI * r * r);\n    }\n}\n`,
       c: `#include <stdio.h>\n\nint main(void) {\n    double r = 5.0;\n    scanf("%lf", &r);\n    printf("%f\\n", 3.141592653589793 * r * r);\n    return 0;\n}\n`,
-      cpp: `#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    double r = 5.0;\n    if (!(cin >> r)) r = 5.0;\n    cout << 3.141592653589793 * r * r << '\\n';\n    return 0;\n}\n`,
+      cpp: `#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    double r = 5.0;\n    if (!(cin >> r)) r = 5.0;\n    cout.setf(ios::fixed); cout.precision(6);\n    cout << 3.141592653589793 * r * r << '\\n';\n    return 0;\n}\n`,
     },
   },
   {
@@ -388,7 +388,7 @@ const TEMPLATES = [
     code: {
       python: `def solve():\n    import sys\n    data = list(map(int, sys.stdin.read().strip().split()))\n    a = data[1:1 + data[0]] if data else []\n    a.sort()\n    print(' '.join(map(str, a)))\n\n\nif __name__ == "__main__":\n    solve()\n`,
       javascript: `const fs = require('node:fs');\nconst d = fs.readFileSync(0, 'utf8').trim().split(/\\s+/).map(Number);\nconst a = d.slice(1, 1 + d[0]);\na.sort((x, y) => x - y);\nconsole.log(a.join(' '));\n`,
-      java: `import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        if (!sc.hasNextInt()) return;\n        int n = sc.nextInt();\n        int[] a = new int[n];\n        for (int i = 0; i < n; i++) a[i] = sc.nextInt();\n        Arrays.sort(a);\n        for (int i = 0; i < n; i++) System.out.print((i ? " " : "") + a[i]);\n        System.out.println();\n    }\n}\n`,
+      java: `import java.util.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        if (!sc.hasNextInt()) return;\n        int n = sc.nextInt();\n        int[] a = new int[n];\n        for (int i = 0; i < n; i++) a[i] = sc.nextInt();\n        Arrays.sort(a);\n        for (int i = 0; i < n; i++) System.out.print((i > 0 ? " " : "") + a[i]);\n        System.out.println();\n    }\n}\n`,
       c: `#include <stdio.h>\n#include <stdlib.h>\nint cmp(const void *a, const void *b) { return *(int*)a - *(int*)b; }\nint main(void) {\n    int n;\n    if (scanf("%d", &n) != 1) return 0;\n    int a[100000];\n    for (int i = 0; i < n; i++) scanf("%d", &a[i]);\n    qsort(a, n, sizeof(int), cmp);\n    for (int i = 0; i < n; i++) printf("%d%c", a[i], i + 1 == n ? '\\n' : ' ');\n    return 0;\n}\n`,
       cpp: `#include <bits/stdc++.h>\nusing namespace std;\n\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    int n;\n    if (!(cin >> n)) return 0;\n    vector<int> a(n);\n    for (auto &x : a) cin >> x;\n    sort(a.begin(), a.end());\n    for (int i = 0; i < n; i++) cout << a[i] << (i + 1 == n ? '\\n' : ' ');\n    return 0;\n}\n`,
     },
@@ -447,20 +447,31 @@ const TEMPLATES = [
   },
 ];
 
-const SYSTEM = `You are Codexa AI, a senior competitive-programming tutor. Given a task and target language, respond with STRICT JSON: {"code": "<complete runnable program reading from stdin, printing to stdout>", "explanation": "<2-4 sentence approach + complexity>", "timeComplexity": "e.g. O(n)", "spaceComplexity": "e.g. O(n)"}. No markdown fences inside values.`;
+const SYSTEM = `You are Codexa AI, a senior competitive-programming tutor. Given a task and target language, solve it DIRECTLY in code: respond with STRICT JSON {"code": "<complete runnable program that reads from stdin and prints ONLY the final answer>", "explanation": "<2-4 sentence approach + complexity>", "timeComplexity": "e.g. O(n)", "spaceComplexity": "e.g. O(n)"}. Rules: the program must solve the task itself (compute and print the answer, no TODOs, no echo, no placeholders). No markdown fences inside values.`;
 
 async function generateCode({ prompt, language = 'cpp' }) {
   const lang = String(language).toLowerCase() === 'js' ? 'javascript' : String(language).toLowerCase();
-  const ai = await tryAI(SYSTEM, `Language: ${lang}\nTask: ${prompt}`, true);
-  if (ai && ai.parsed && ai.parsed.code) {
-    return {
-      code: ai.parsed.code,
-      explanation: ai.parsed.explanation || '',
-      timeComplexity: ai.parsed.timeComplexity || null,
-      spaceComplexity: ai.parsed.spaceComplexity || null,
-      engine: 'ai',
-      model: ai.model,
-    };
+  const { isAvailable } = require('./client');
+  if (isAvailable()) {
+    // Gemini (or other provider) is configured: it answers every prompt, so
+    // never silently serve a mismatched offline guess. On failure the caller
+    // surfaces a clear retryable error instead.
+    const ai = await tryAI(SYSTEM, `Language: ${lang}\nTask: ${prompt}`, true);
+    if (ai && ai.parsed && typeof ai.parsed.code === 'string' && ai.parsed.code.trim()) {
+      return {
+        code: ai.parsed.code,
+        explanation: ai.parsed.explanation || '',
+        timeComplexity: ai.parsed.timeComplexity || null,
+        spaceComplexity: ai.parsed.spaceComplexity || null,
+        engine: 'ai',
+        model: ai.model,
+      };
+    }
+    const err = new Error(
+      'Gemini is unreachable right now (free-tier quota or a demand spike). Wait a few seconds and press Generate again.',
+    );
+    err.code = 'AI_BAD_RESPONSE';
+    throw err;
   }
   const hit = TEMPLATES.find((t) => t.match.test(prompt));
   if (hit && hit.code[lang]) {

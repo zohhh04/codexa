@@ -152,6 +152,27 @@ describe('Phase 7 — AI endpoints', () => {
       }
     });
 
+    it('accepts language and diagnostics for precise answers', async () => {
+      const app = createApp();
+      const server = app.listen(0);
+      await new Promise((r) => server.on('listening', r));
+      try {
+        const { status, json } = await postJson(server.address().port, '/api/ai/tutor', {
+          question: 'What are my errors?',
+          sourceCode: 'int main() { int a = 1; }',
+          language: 'cpp',
+          diagnostics: [
+            { phase: 'syntax', severity: 'error', code: 'SYN_SEMI', message: 'Missing semicolon', line: 1, column: 5 },
+          ],
+        });
+        assert.strictEqual(status, 200);
+        assert.strictEqual(json.success, true);
+        assert.ok(json.data.hint.length > 0);
+      } finally {
+        server.close();
+      }
+    });
+
     it('rejects empty question with 400', async () => {
       const app = createApp();
       const server = app.listen(0);

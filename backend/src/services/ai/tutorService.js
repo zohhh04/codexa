@@ -10,8 +10,9 @@ const TUTOR_SYSTEM = `You are Codexa AI, a patient programming tutor. Your job i
 RULES:
 1. Be encouraging and supportive.
 2. Answer precisely about the given code and diagnostics — cite line numbers.
-3. Keep responses focused — one concept at a time.
-4. Suggest next steps for learning.
+3. NEVER paste the student's code back. Explain in plain words what each part does and what it means — the student can already see their code in the editor.
+4. Keep responses focused — one concept at a time.
+5. Suggest next steps for learning.
 RESPONSE FORMAT (strict JSON):
 { "hint": "your hint or explanation (may use short lines)", "concept": "the core concept being taught", "nextSteps": ["suggestion1", "suggestion2"], "speakable": "plain-text version with no markdown, suitable for text-to-speech" }`;
 
@@ -90,14 +91,13 @@ function fixHint(d) {
 
 function walkthrough(sourceCode, language, maxLines = 30) {
   const lines = codeLines(sourceCode);
-  const out = [];
   const shown = [];
   lines.forEach((raw, idx) => {
     if (shown.length >= maxLines) return;
     if (!raw.trim()) return;
     const desc = describeLine(raw, language);
     if (!desc) return;
-    shown.push(`Line ${idx + 1} \`${raw.trim().slice(0, 90)}\` — ${desc}.`);
+    shown.push(`Line ${idx + 1} ${desc}.`);
   });
   return shown;
 }
@@ -129,7 +129,7 @@ function offlineTutor({ question, sourceCode, language = 'cpp', diagnostics = []
     }
     const desc = describeLine(raw, language);
     const onLine = real.filter((d) => d.line === n).slice(0, 3);
-    let hint = `Line ${n} \`${raw.trim().slice(0, 120)}\` — ${desc}.`;
+    let hint = `Line ${n} ${desc}.`;
     if (onLine.length) {
       hint += ` This line has ${onLine.length} issue(s): ` + onLine.map((d) => `${d.code}: ${d.message} ${fixHint(d)}`).join(' ');
     } else {
@@ -164,17 +164,13 @@ function offlineTutor({ question, sourceCode, language = 'cpp', diagnostics = []
       return pick('Debugging', `Good news — Analyze reports no errors in your ${s.nonEmpty}-line ${language.toUpperCase()} program. It should compile. If Run still fails, check: (1) did you type stdin for input-reading code? (2) is the right language selected? Press Run and read the compile diagnostics there.`, ['Press Run with sample input', 'Ask "how does my code work?"']);
     }
     const top = [...errors, ...warnings].slice(0, 6);
-    const parts = top.map((d, i) => {
-      const raw = (lines[(d.line || 1) - 1] || '').trim().slice(0, 100);
-      return `${i + 1}. Line ${d.line} [${d.severity} ${d.code}] ${d.message}${raw ? ` — your code: \`${raw}\`` : ''} ${fixHint(d)}`;
-    });
+    const parts = top.map((d, i) => `${i + 1}. Line ${d.line} [${d.severity} ${d.code}] ${d.message} ${fixHint(d)}`);
     const hint = `I read your editor (${s.nonEmpty} code lines, ${language.toUpperCase()}) and Analyze found ${errors.length} error(s), ${warnings.length} warning(s). ${parts.join('\n')}${errors.length > 6 ? `\n…and ${errors.length + warnings.length - 6} more — fix the first one first, later ones are often cascades.` : ''}\n\nStart with error #1, fix it, press Analyze again.`;
     return pick('Debugging your errors', hint, ['Fix error #1 then re-analyze', 'Ask "what does line N do?" for any line above']);
   }
 
   if (/token|lexical|lexer|lexing/.test(ql)) {
-    const sample = lines.find((l) => l.trim()) || '';
-    return pick('Lexical analysis', `Lexing turns your characters into tokens. Your code has ${s.nonEmpty} non-empty line(s) — press Analyze → Lexical to see every token. Example from your code, line 1: \`${sample.trim().slice(0, 100)}\` → keywords, identifiers, operators, literals and separators, each with line + column.`, ['Open the Lexical tab', 'Ask "what does line 1 do?"']);
+    return pick('Lexical analysis', `Lexing turns your characters into tokens — keywords, identifiers, operators, literals and separators, each with its line and column. Your code has ${s.nonEmpty} non-empty line(s) — press Analyze → Lexical to see every token listed. As a general example, the statement "int sum = a + b;" splits into KEYWORD(int), IDENTIFIER(sum), OPERATOR(=), IDENTIFIER(a), OPERATOR(+), IDENTIFIER(b), DELIMITER(;).`, ['Open the Lexical tab', 'Ask "what does line 1 do?"']);
   }
   if (/syntax|grammar|parse tree|ast|parser|parsing/.test(ql)) {
     const synCount = real.filter((d) => d.phase === 'syntax' || d.phase === 'lex' || d.phase === 'lexical').length;
@@ -206,7 +202,7 @@ async function getTutorHint({ question, sourceCode, language = 'cpp', diagnostic
   const diagText = (Array.isArray(diagnostics) ? diagnostics : []).slice(0, 12).map((d) => `${d.severity} ${d.code} L${d.line}: ${d.message}`).join('\n');
   const ai = await tryAI(
     TUTOR_SYSTEM,
-    `Language: ${language}\nContext: ${context}\nStudent question: ${question}\nDiagnostics from Analyze:\n${diagText || '(none)'}\nCurrent code:\n\`\`\`\n${sourceCode}\n\`\`\`\nBe precise: cite line numbers and the actual code.`,
+    `Language: ${language}\nContext: ${context}\nStudent question: ${question}\nDiagnostics from Analyze:\n${diagText || '(none)'}\nCurrent code:\n\`\`\`\n${sourceCode}\n\`\`\`\nBe precise: cite line numbers. Never paste the code back — explain in words only.`,
     true,
   );
   if (ai && (ai.parsed?.hint || ai.raw)) {

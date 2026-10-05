@@ -15,82 +15,122 @@ const WINS = [
 ];
 
 function winnerOf(b) {
-  for (const [a, c, d] of WINS) {
-    if (b[a] && b[a] === b[c] && b[a] === b[d]) return b[a];
+  for (const line of WINS) {
+    const [a, c, d] = line;
+    if (b[a] && b[a] === b[c] && b[a] === b[d]) return { winner: b[a], line };
   }
-  return b.every(Boolean) ? 'draw' : null;
+  return b.every(Boolean) ? { winner: 'draw', line: [] } : null;
 }
 
 function TicTacToe() {
+  const [mode, setMode] = useState('2p'); // '2p' = two players alternate, 'cpu' = vs computer
   const [board, setBoard] = useState(Array(9).fill(''));
-  const [score, setScore] = useState({ you: 0, cpu: 0, draws: 0 });
+  const [turn, setTurn] = useState('X');
+  const [score, setScore] = useState({ X: 0, O: 0, draws: 0 });
   const [over, setOver] = useState(null);
+  const [winLine, setWinLine] = useState([]);
+
+  const finish = (res) => {
+    const w = res.winner;
+    setOver(w);
+    setWinLine(res.line || []);
+    setScore((s) => ({
+      X: s.X + (w === 'X' ? 1 : 0),
+      O: s.O + (w === 'O' ? 1 : 0),
+      draws: s.draws + (w === 'draw' ? 1 : 0),
+    }));
+  };
 
   const play = (i) => {
     if (board[i] || over) return;
     const next = [...board];
-    next[i] = 'X';
-    let w = winnerOf(next);
-    if (!w) {
+    next[i] = turn;
+    let res = winnerOf(next);
+    if (!res && mode === 'cpu' && turn === 'X') {
+      // computer (O) answers with a random free square
       const free = next.map((v, idx) => (v ? null : idx)).filter((v) => v !== null);
       if (free.length > 0) {
-        const pick = free[Math.floor(Math.random() * free.length)];
-        // slight delay feel: place immediately (simple + snappy)
-        next[pick] = 'O';
-        w = winnerOf(next);
+        next[free[Math.floor(Math.random() * free.length)]] = 'O';
+        res = winnerOf(next);
       }
+      setBoard(next);
+      if (res) finish(res);
+      return; // stays your (X) turn
     }
     setBoard(next);
-    if (w) {
-      setOver(w);
-      setScore((s) => ({
-        you: s.you + (w === 'X' ? 1 : 0),
-        cpu: s.cpu + (w === 'O' ? 1 : 0),
-        draws: s.draws + (w === 'draw' ? 1 : 0),
-      }));
+    if (res) {
+      finish(res);
+    } else {
+      setTurn(turn === 'X' ? 'O' : 'X');
     }
   };
 
   const reset = () => {
     setBoard(Array(9).fill(''));
+    setTurn('X');
     setOver(null);
+    setWinLine([]);
+  };
+
+  const switchMode = (m) => {
+    setMode(m);
+    reset();
   };
 
   return (
     <div>
       <div className="flex flex-wrap items-center gap-2">
-        <Badge tone="teal">You are X</Badge>
-        <Badge>Wins: {score.you}</Badge>
-        <Badge>CPU: {score.cpu}</Badge>
+        <div className="flex rounded-lg border border-edge2 bg-sunken p-0.5" role="tablist" aria-label="Game mode">
+          {[
+            { id: '2p', label: '2 Players' },
+            { id: 'cpu', label: 'Vs Computer' },
+          ].map((m) => (
+            <button
+              key={m.id}
+              onClick={() => switchMode(m.id)}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${mode === m.id ? 'bg-teal-400/15 text-ink' : 'text-muted hover:text-ink'}`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <Badge tone="teal">{mode === '2p' ? `Player ${turn}'s turn` : 'You are X'}</Badge>
+        <Badge>X: {score.X}</Badge>
+        <Badge>O: {score.O}</Badge>
         <Badge>Draws: {score.draws}</Badge>
         <Button size="sm" variant="secondary" className="ml-auto" onClick={reset}>
           <RotateCcw size={14} /> New game
         </Button>
       </div>
       <div className="mx-auto mt-4 grid max-w-[300px] grid-cols-3 gap-2">
-        {board.map((v, i) => (
-          <button
-            key={i}
-            onClick={() => play(i)}
-            disabled={Boolean(v) || Boolean(over)}
-            aria-label={`Cell ${i + 1}`}
-            className={`grid aspect-square place-items-center rounded-xl border text-3xl font-bold transition-colors ${
-              v === 'X'
-                ? 'border-teal-400/40 bg-teal-400/10 text-teal-600 dark:text-teal-300'
-                : v === 'O'
-                  ? 'border-violet-400/40 bg-violet-500/10 text-violet-600 dark:text-violet-300'
-                  : 'border-edge2 bg-sunken hover:border-teal-400/50'
-            }`}
-          >
-            {v}
-          </button>
-        ))}
+        {board.map((v, i) => {
+          const struck = winLine.includes(i);
+          return (
+            <button
+              key={i}
+              onClick={() => play(i)}
+              disabled={Boolean(v) || Boolean(over)}
+              aria-label={`Cell ${i + 1}${struck ? ' (winning line)' : ''}`}
+              className={`grid aspect-square place-items-center rounded-xl border text-3xl font-bold transition-colors ${
+                struck
+                  ? 'border-amber-400/60 bg-amber-400/15 line-through decoration-2'
+                  : v === 'X'
+                    ? 'border-teal-400/40 bg-teal-400/10 text-teal-600 dark:text-teal-300'
+                    : v === 'O'
+                      ? 'border-violet-400/40 bg-violet-500/10 text-violet-600 dark:text-violet-300'
+                      : 'border-edge2 bg-sunken hover:border-teal-400/50'
+              } ${struck ? 'text-amber-600 dark:text-amber-300' : ''}`}
+            >
+              {v}
+            </button>
+          );
+        })}
       </div>
       <p className="mt-4 text-center text-sm text-muted" role="status">
-        {over === 'X' && 'You win! Take a breath, you earned it.'}
-        {over === 'O' && 'CPU takes this one — shake it off and go again.'}
+        {over === 'X' && (mode === '2p' ? 'Player X wins! Take a breath, you earned it.' : 'You win! Take a breath, you earned it.')}
+        {over === 'O' && (mode === '2p' ? 'Player O wins! Well played both of you.' : 'CPU takes this one — shake it off and go again.')}
         {over === 'draw' && "It's a draw — perfectly balanced."}
-        {!over && 'Your move — tap any square.'}
+        {!over && (mode === '2p' ? `Player ${turn} — tap any square.` : 'Your move — tap any square.')}
       </p>
     </div>
   );

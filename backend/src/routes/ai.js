@@ -11,7 +11,7 @@ const { proposeFix } = require('../services/ai/fixService');
 const { getTutorHint } = require('../services/ai/tutorService');
 const { generateCode } = require('../services/ai/codegenService');
 const { askConcept, getHint } = require('../services/ai/learnService');
-const { isAvailable } = require('../services/ai/client');
+const { isAvailable, getProvider } = require('../services/ai/client');
 
 const router = Router();
 
@@ -191,9 +191,10 @@ router.post('/hints', rateLimit, async (req, res) => {
   }
 });
 
-// GET /api/ai/status — check if AI is configured
+// GET /api/ai/status — check if AI is configured (and which provider)
 router.get('/status', (req, res) => {
-  return ok(res, { available: isAvailable() });
+  const { provider, model } = getProvider();
+  return ok(res, { available: isAvailable(), provider, model: isAvailable() ? model : null });
 });
 
 module.exports = router;

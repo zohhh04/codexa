@@ -2,7 +2,8 @@
  * Codexa AI — explain diagnostic service (Phase 7).
  * Takes a diagnostic + source code + difficulty level, returns a grounded explanation.
  */
-const { chat, isAvailable, AIError } = require('./client');
+const { isAvailable } = require('./client');
+const { tryAI, engineOf } = require('./offline');
 
 const EXPLAIN_SYSTEM = `You are Codexa AI, an expert C++ compiler error detective. Your job is to explain compiler diagnostics to students.
 
@@ -62,30 +63,26 @@ ${sourceCode}
 ## Level
 ${levelInstr}`;
 
-  const result = await chat(EXPLAIN_SYSTEM, userMessage);
-
-  // Parse JSON from response
-  let parsed;
-  try {
-    // Extract JSON from markdown code block if present
-    const jsonMatch = result.content.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const jsonStr = jsonMatch ? jsonMatch[1] : result.content;
-    parsed = JSON.parse(jsonStr.trim());
-  } catch {
-    // If parsing fails, use raw content
-    parsed = {
-      explanation: result.content,
-      fix: null,
-      relatedConcepts: [],
+  const ai = await tryAI(EXPLAIN_SYSTEM, userMessage, true);
+  if (ai && (ai.parsed?.explanation || ai.raw)) {
+    return {
+      explanation: ai.parsed?.explanation || ai.raw,
+      fix: ai.parsed?.fix || null,
+      relatedConcepts: ai.parsed?.relatedConcepts || [],
+      model: ai.model,
+      aiAvailable: true,
+      engine: 'ai',
     };
   }
 
+  // Offline fallback: grounded in the diagnostic itself — never a 500.
+  const d = diagnostic || {};
   return {
-    explanation: parsed.explanation || result.content,
-    fix: parsed.fix || null,
-    relatedConcepts: parsed.relatedConcepts || [],
-    model: result.model,
-    aiAvailable: true,
+    explanation: `Line ${d.line ?? '?'} [${d.severity ?? 'error'} ${d.code ?? ''}]: ${d.message ?? 'unknown problem'}. This is a ${d.phase ?? 'compiler'}-phase issue — open the matching Studio tab (Lexical/Syntax/Semantic) to see it highlighted, fix the exact line, then press Analyze again.`,
+    fix: null,
+    relatedConcepts: [],
+    aiAvailable: false,
+    engine: engineOf(ai),
   };
 }
 

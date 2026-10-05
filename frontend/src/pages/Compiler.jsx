@@ -232,7 +232,9 @@ export default function Compiler() {
         setStatus('Generation returned no code.');
       }
     } catch (e) {
-      setStatus(`Generate failed: ${e?.response?.data?.error?.message || e.message}`);
+      const msg = e?.response?.data?.error?.message || e.message;
+      setGenInfo({ engine: 'error', explanation: msg });
+      setStatus(`Generate failed: ${msg}`);
     } finally {
       setGenLoading(false);
     }
@@ -486,14 +488,14 @@ export default function Compiler() {
               <Sparkles size={14} /> {genLoading ? 'Generating…' : 'Generate into editor'}
             </Button>
             {genInfo && (
-              <div className="mt-2 rounded-lg border border-edge bg-sunken px-3 py-2 text-xs leading-relaxed text-muted">
+              <div className={`mt-2 rounded-lg border px-3 py-2 text-xs leading-relaxed ${genInfo.engine === 'error' ? 'border-red-500/30 bg-red-500/10' : 'border-edge bg-sunken'}`}>
                 <p>
-                  <span className={`font-semibold ${genInfo.engine === 'ai' ? 'text-teal-600 dark:text-teal-300' : 'text-amber-600 dark:text-amber-300'}`}>
-                    {genInfo.engine === 'ai' ? 'AI model' : 'Offline builder'}
+                  <span className={`font-semibold ${genInfo.engine === 'ai' ? 'text-teal-600 dark:text-teal-300' : genInfo.engine === 'error' ? 'text-red-600 dark:text-red-300' : 'text-amber-600 dark:text-amber-300'}`}>
+                    {genInfo.engine === 'ai' ? 'Gemini' : genInfo.engine === 'error' ? 'Generation failed — try again' : 'Offline builder'}
                   </span>
                   {genInfo.time && <> · {genInfo.time} time · {genInfo.space} space</>}
                 </p>
-                {genInfo.explanation && <p className="mt-1">{genInfo.explanation}</p>}
+                {genInfo.explanation && <p className="mt-1 text-muted">{genInfo.explanation}</p>}
               </div>
             )}
           </div>

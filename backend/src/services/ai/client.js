@@ -3,18 +3,49 @@
  *
  * Uses native fetch to call any OpenAI-compatible API endpoint.
  * Configure via env: AI_API_KEY, AI_MODEL, AI_BASE_URL.
+ *
+ * FREE option — Google Gemini: paste a free Gemini API key
+ * (starts with "AIza", from Google AI Studio) as AI_API_KEY and it is
+ * auto-detected: requests go to Gemini's OpenAI-compatible endpoint with
+ * a free flash model. No other config needed. Explicit AI_BASE_URL /
+ * AI_MODEL always win over auto-detection.
  * When no key is configured, returns a clear error — never fakes output.
  */
 const config = require('../../config/env');
 
 const DEFAULT_BASE_URL = 'https://api.openai.com/v1';
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/openai';
+const GEMINI_MODEL = 'gemini-2.0-flash';
 const TIMEOUT_MS = 30_000;
 
 function getProvider() {
-  const apiKey = config.aiApiKey || process.env.AI_API_KEY || '';
-  const model = config.aiModel || process.env.AI_MODEL || 'gpt-4o-mini';
-  const baseUrl = config.aiBaseUrl || process.env.AI_BASE_URL || DEFAULT_BASE_URL;
-  return { apiKey, model, baseUrl };
+  // CODEXA_FORCE_OFFLINE=1 is a test hook so unit tests stay deterministic
+  // (and free of network) even when a real key sits in backend/.env.
+  if (process.env.CODEXA_FORCE_OFFLINE === '1') {
+    return { apiKey: '', model: 'offline', baseUrl: DEFAULT_BASE_URL, provider: 'none' };
+  }
+  // Live process.env wins over the config snapshot so tests and shells can
+  // override the file-based key without reloading modules.
+  const apiKey = process.env.AI_API_KEY || config.aiApiKey || '';
+  // NOTE: config fills defaults ('https://api.openai.com/v1', 'gpt-4o-mini'),
+  // so "explicit" means the user actually set a non-default value.
+  const envBase = process.env.AI_BASE_URL || '';
+  const cfgBase = config.aiBaseUrl && config.aiBaseUrl !== DEFAULT_BASE_URL ? config.aiBaseUrl : '';
+  const explicitBase = envBase || cfgBase;
+  const envModel = process.env.AI_MODEL || '';
+  const cfgModel = config.aiModel && config.aiModel !== 'gpt-4o-mini' ? config.aiModel : '';
+  const explicitModel = envModel || cfgModel;
+  const looksGemini = /^AIza/.test(apiKey);
+  const baseUrl = explicitBase || (looksGemini ? GEMINI_BASE_URL : DEFAULT_BASE_URL);
+  const provider = explicitBase
+    ? 'custom'
+    : looksGemini
+      ? 'gemini'
+      : apiKey
+        ? 'openai'
+        : 'none';
+  const model = explicitModel || (provider === 'gemini' ? GEMINI_MODEL : 'gpt-4o-mini');
+  return { apiKey, model, baseUrl, provider };
 }
 
 function isAvailable() {
@@ -41,28 +72,43 @@ async function chat(systemPrompt, userMessage) {
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
-    const res = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userMessage },
-        ],
-        temperature: 0.3,
-        max_tokens: 2048,
-      }),
-      signal: controller.signal,
-    });
+    // One automatic retry: free tiers (e.g. Gemini) often answer 429/503
+    // on spikes — a short wait usually succeeds, and callers fall back to
+    // offline builders only if both attempts fail.
+    let res = null;
+    let lastStatus = 0;
+    let lastBody = '';
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      res = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage },
+          ],
+          temperature: 0.3,
+          max_tokens: 2048,
+        }),
+        signal: controller.signal,
+      });
+      if (res.ok) break;
+      lastStatus = res.status;
+      lastBody = await res.text().catch(() => '');
+      if ((res.status === 429 || res.status === 503) && attempt === 1) {
+        await new Promise((r) => setTimeout(r, 2000));
+        continue;
+      }
+      break;
+    }
 
     if (!res.ok) {
-      const body = await res.text().catch(() => '');
       throw new AIError(
-        `AI provider returned ${res.status}: ${body.slice(0, 200)}`,
+        `AI provider returned ${lastStatus}: ${lastBody.slice(0, 200)}`,
         'AI_PROVIDER_ERROR',
       );
     }
