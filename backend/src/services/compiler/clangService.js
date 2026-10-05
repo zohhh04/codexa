@@ -23,13 +23,14 @@ const MAX_STDERR = 64 * 1024;
 
 // Parse clang/clang++ stderr diagnostics into structured objects.
 // Format: "file:line:col: severity: message"
-const DIAG_RE = /^(.+?):(\d+):(\d+):\s*(error|warning|note):\s*(.+)$/;
+// The optional drive-letter prefix keeps Windows paths (C:\...) parsing.
+const DIAG_RE = /^(?:[A-Za-z]:)?(.+?):(\d+):(\d+):\s*(error|warning|note):\s*(.+)$/;
 // Also handle "file:line: severity: message" (no column)
-const DIAG_RE_NOCOL = /^(.+?):(\d+):\s*(error|warning|note):\s*(.+)$/;
+const DIAG_RE_NOCOL = /^(?:[A-Za-z]:)?(.+?):(\d+):\s*(error|warning|note):\s*(.+)$/;
 
 function parseDiagnostics(raw, filename) {
   if (!raw) return [];
-  const lines = raw.split('\n').filter(Boolean);
+  const lines = raw.split(/\r?\n/).filter(Boolean);
   const diags = [];
   for (const line of lines) {
     let m = DIAG_RE.exec(line);
@@ -280,7 +281,7 @@ async function compileAndRunC(sourceCode, started, tmpDir, stdin) {
   try {
     const { stderr } = await execFileAsync(
       cc,
-      ['-std=c17', '-O2', '-o', binPath, srcPath],
+      ['-std=c11', '-O2', '-o', binPath, srcPath],
       { timeout: CLANG_TIMEOUT_MS, windowsHide: true, cwd: tmpDir },
     );
     compileOk = true;
@@ -325,14 +326,36 @@ async function compileAndRunJava(sourceCode, started, tmpDir, stdin) {
       started,
     );
   }
-  if (!/class\s+Main\b/.test(sourceCode)) {
+  // Accept any class name (internet code rarely uses "Main").
+  // Rules: filename must match the public class if there is one;
+  // the class we run is the one containing public static void main.
+  const sanitized = String(sourceCode).replace(/^\s*package\s+[\w.]+\s*;/m, '');
+  const publicMatch = /public\s+(?:final\s+)?class\s+([A-Za-z_$][\w$]*)/.exec(sanitized);
+  const classMatches = [...sanitized.matchAll(/(?:^|[;{}])\s*(?:public\s+)?(?:final\s+)?class\s+([A-Za-z_$][\w$]*)/g)];
+  const mainIdx = sanitized.search(/public\s+static\s+void\s+main\s*\(\s*String/);
+  let runClass = publicMatch ? publicMatch[1] : null;
+  if (mainIdx >= 0 && classMatches.length > 0) {
+    let owner = classMatches[0][1];
+    for (const m of classMatches) {
+      if (m.index <= mainIdx) owner = m[1];
+      else break;
+    }
+    // Prefer the class that actually holds main() unless a public class
+    // forces the filename — if they differ, javac still compiles both and
+    // we run the owner. If a public class exists and is NOT the owner,
+    // `java <owner>` still works because all classes compile together.
+    runClass = publicMatch && mainIdx >= 0 ? owner : owner;
+  } else if (!runClass && classMatches.length > 0) {
+    runClass = classMatches[0][1];
+  }
+  if (!runClass) {
     return {
       compile: {
         success: false,
         diagnostics: [{
           phase: 'compile', source: 'javac', severity: 'error',
-          code: 'JAVA_MAIN_CLASS',
-          message: 'Java programs must declare "class Main" with "public static void main(String[] args)". Rename your public class to Main.',
+          code: 'JAVA_NO_CLASS',
+          message: 'No class found. Java programs need at least one "class X" with "public static void main(String[] args)" to run.',
           line: 1, column: 1, endLine: 1, endColumn: 2,
         }],
         elapsedMs: Date.now() - started,
@@ -340,26 +363,44 @@ async function compileAndRunJava(sourceCode, started, tmpDir, stdin) {
       run: emptyRun(),
     };
   }
-  const srcPath = join(tmpDir, 'Main.java');
-  await writeFile(srcPath, sourceCode, 'utf8');
+  if (!/public\s+static\s+void\s+main\s*\(\s*String/.test(sanitized)) {
+    return {
+      compile: {
+        success: false,
+        diagnostics: [{
+          phase: 'compile', source: 'javac', severity: 'error',
+          code: 'JAVA_NO_MAIN',
+          message: `No main method found in class "${runClass}". Add "public static void main(String[] args)" to run it.`,
+          line: 1, column: 1, endLine: 1, endColumn: 2,
+        }],
+        elapsedMs: Date.now() - started,
+      },
+      run: emptyRun(),
+    };
+  }
+  // javac requires the file to be named after the public class.
+  const fileClass = publicMatch ? publicMatch[1] : runClass;
+  const fileName = `${fileClass}.java`;
+  const srcPath = join(tmpDir, fileName);
+  await writeFile(srcPath, sanitized, 'utf8');
   const compileStarted = Date.now();
   try {
-    await execFileAsync(javac, ['Main.java'], { timeout: CLANG_TIMEOUT_MS, windowsHide: true, cwd: tmpDir });
+    await execFileAsync(javac, [fileName], { timeout: CLANG_TIMEOUT_MS, windowsHide: true, cwd: tmpDir });
   } catch (err) {
     const raw = err.stderr || err.stdout || err.message || '';
     const diags = raw
       .split('\n')
       .filter((l) => l.trim())
       .map((line) => {
-        const m = /^Main\.java:(\d+):\s*(error|warning)?:?\s*(.*)$/.exec(line.trim());
+        const m = /^(.+\.java):(\d+):\s*(error|warning)?:?\s*(.*)$/.exec(line.trim());
         if (m) {
           return {
             phase: 'compile', source: 'javac',
-            severity: m[2] === 'warning' ? 'warning' : 'error',
+            severity: m[3] === 'warning' ? 'warning' : 'error',
             code: 'JAVAC',
-            message: m[3] || line.trim(),
-            line: parseInt(m[1], 10), column: 1,
-            endLine: parseInt(m[1], 10), endColumn: 2,
+            message: m[4] || line.trim(),
+            line: parseInt(m[2], 10), column: 1,
+            endLine: parseInt(m[2], 10), endColumn: 2,
           };
         }
         return {
@@ -374,7 +415,7 @@ async function compileAndRunJava(sourceCode, started, tmpDir, stdin) {
     };
   }
   const compileMs = Date.now() - compileStarted;
-  const run = await runBinary(java, ['Main'], tmpDir, stdin);
+  const run = await runBinary(java, [runClass], tmpDir, stdin);
   return { compile: { success: true, diagnostics: [], elapsedMs: compileMs }, run };
 }
 

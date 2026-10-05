@@ -1,5 +1,7 @@
+const bcrypt = require('bcrypt');
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const { z } = require('zod');
 const config = require('../config/env');
 const User = require('../models/User');
@@ -7,6 +9,17 @@ const { authenticate } = require('../middleware/auth');
 const { normalizeEmail } = require('../utils/normalizeEmail');
 
 const router = express.Router();
+
+// In-memory fallback so login/register work without MongoDB running.
+// Used only when mongoose is disconnected or the DB operation fails.
+const memoryUsers = new Map(); // email -> { id, name, email, passwordHash, createdAt }
+function dbReady() {
+  try {
+    return mongoose.connection && mongoose.connection.readyState === 1;
+  } catch {
+    return false;
+  }
+}
 
 const registerSchema = z.object({
   name: z.string().trim().min(1).max(100),
@@ -40,21 +53,57 @@ router.post('/auth/register', async (req, res, next) => {
     const { name, email, password } = parsed.data;
     const normalizedEmail = normalizeEmail(email);
 
-    const existing = await User.findOne({ email: normalizedEmail });
-    if (existing) {
+    // Try MongoDB first; fall back to memory store when DB is down.
+    if (dbReady()) {
+      try {
+        const existing = await User.findOne({ email: normalizedEmail });
+        if (existing) {
+          return res.status(409).json({
+            success: false,
+            error: { code: 'EMAIL_TAKEN', message: 'An account with this email already exists' },
+          });
+        }
+        const passwordHash = await User.hashPassword(password);
+        const user = await User.create({ name, email: normalizedEmail, passwordHash });
+        const token = signToken(user);
+        return res.status(201).json({
+          success: true,
+          data: { token, user: { id: user._id, name: user.name, email: user.email } },
+        });
+      } catch (err) {
+        if (memoryUsers.has(normalizedEmail)) {
+          return res.status(409).json({
+            success: false,
+            error: { code: 'EMAIL_TAKEN', message: 'An account with this email already exists' },
+          });
+        }
+        // fall through to memory store
+      }
+    }
+
+    if (memoryUsers.has(normalizedEmail)) {
       return res.status(409).json({
         success: false,
         error: { code: 'EMAIL_TAKEN', message: 'An account with this email already exists' },
       });
     }
-
-    const passwordHash = await User.hashPassword(password);
-    const user = await User.create({ name, email: normalizedEmail, passwordHash });
-    const token = signToken(user);
-
-    res.status(201).json({
+    const passwordHash = await bcrypt.hash(password, 12);
+    const mem = {
+      id: `mem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      name,
+      email: normalizedEmail,
+      passwordHash,
+      createdAt: new Date().toISOString(),
+    };
+    memoryUsers.set(normalizedEmail, mem);
+    const token = jwt.sign(
+      { sub: mem.id, email: mem.email, name: mem.name },
+      config.jwtSecret,
+      { expiresIn: '7d' },
+    );
+    return res.status(201).json({
       success: true,
-      data: { token, user: { id: user._id, name: user.name, email: user.email } },
+      data: { token, user: { id: mem.id, name: mem.name, email: mem.email }, storage: 'memory' },
     });
   } catch (err) {
     next(err);
@@ -74,18 +123,59 @@ router.post('/auth/login', async (req, res, next) => {
     const { email, password } = parsed.data;
     const normalizedEmail = normalizeEmail(email);
 
-    const user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
-    if (!user || !(await user.comparePassword(password))) {
+    if (dbReady()) {
+      try {
+        const user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
+        if (user && (await user.comparePassword(password))) {
+          const token = signToken(user);
+          return res.json({
+            success: true,
+            data: { token, user: { id: user._id, name: user.name, email: user.email } },
+          });
+        }
+        // If DB is up but user not found, still check memory store before 401.
+        if (!user) {
+          const mem = memoryUsers.get(normalizedEmail);
+          if (mem && (await bcrypt.compare(password, mem.passwordHash))) {
+            const token = jwt.sign(
+              { sub: mem.id, email: mem.email, name: mem.name },
+              config.jwtSecret,
+              { expiresIn: '7d' },
+            );
+            return res.json({
+              success: true,
+              data: { token, user: { id: mem.id, name: mem.name, email: mem.email }, storage: 'memory' },
+            });
+          }
+          return res.status(401).json({
+            success: false,
+            error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' },
+          });
+        }
+        return res.status(401).json({
+          success: false,
+          error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' },
+        });
+      } catch {
+        // fall through to memory store
+      }
+    }
+
+    const mem = memoryUsers.get(normalizedEmail);
+    if (!mem || !(await bcrypt.compare(password, mem.passwordHash))) {
       return res.status(401).json({
         success: false,
         error: { code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' },
       });
     }
-
-    const token = signToken(user);
+    const token = jwt.sign(
+      { sub: mem.id, email: mem.email, name: mem.name },
+      config.jwtSecret,
+      { expiresIn: '7d' },
+    );
     res.json({
       success: true,
-      data: { token, user: { id: user._id, name: user.name, email: user.email } },
+      data: { token, user: { id: mem.id, name: mem.name, email: mem.email }, storage: 'memory' },
     });
   } catch (err) {
     next(err);
@@ -94,6 +184,21 @@ router.post('/auth/login', async (req, res, next) => {
 
 router.get('/auth/me', authenticate, async (req, res, next) => {
   try {
+    if (!dbReady()) {
+      const mem = [...memoryUsers.values()].find((u) => u.id === req.user.id);
+      if (!mem) {
+        // Token is valid JWT but no store — still return its payload so
+        // sessions survive restarts in memory mode.
+        return res.json({
+          success: true,
+          data: { id: req.user.id, name: req.user.name, email: req.user.email },
+        });
+      }
+      return res.json({
+        success: true,
+        data: { id: mem.id, name: mem.name, email: mem.email, createdAt: mem.createdAt },
+      });
+    }
     const user = await User.findById(req.user.id);
     if (!user) {
       return res.status(404).json({
@@ -184,12 +289,10 @@ router.delete('/auth/account', authenticate, async (req, res, next) => {
     const Project = require('../models/Project');
     const Analysis = require('../models/Analysis');
     const PracticeAttempt = require('../models/PracticeAttempt');
-    const Submission = require('../models/Submission');
     await Promise.all([
       Project.deleteMany({ userId: req.user.id }),
       Analysis.deleteMany({ userId: req.user.id }).catch(() => null),
       PracticeAttempt.deleteMany({ userId: req.user.id }).catch(() => null),
-      Submission.deleteMany({ userId: req.user.id }).catch(() => null),
       User.findByIdAndDelete(req.user.id),
     ]);
     res.json({ success: true, data: { deleted: true } });

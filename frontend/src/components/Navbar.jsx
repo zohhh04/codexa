@@ -1,17 +1,14 @@
-import { Boxes, ChevronDown, LayoutDashboard, LogOut, Menu, Moon, Settings as SettingsIcon, Sun, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Boxes, ChevronDown, FlaskConical, LogOut, Menu, Moon, Sun, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { Button } from './ui';
 
 const links = [
-  { to: '/compiler', label: 'Compiler' },
-  { to: '/ai', label: 'AI Studio' },
-  { to: '/problems', label: 'Problems' },
-  { to: '/learn', label: 'Learn' },
-  { to: '/dashboard', label: 'Dashboard' },
-  { to: '/docs', label: 'Docs' },
+  { to: '/', label: 'Home' },
+  { to: '/studio', label: 'Studio' },
+  { to: '/fun', label: 'Fun' },
 ];
 
 export function ThemeToggle() {
@@ -21,7 +18,6 @@ export function ThemeToggle() {
     <button
       onClick={toggle}
       aria-label={isLight ? 'Switch to dark theme' : 'Switch to light theme'}
-      title={isLight ? 'Switch to dark theme' : 'Switch to light theme'}
       className="grid size-9 place-items-center rounded-lg border border-edge2 bg-ink/5 text-body transition-colors hover:border-teal-400/50 hover:text-ink"
     >
       {isLight ? <Moon size={16} /> : <Sun size={16} />}
@@ -30,105 +26,63 @@ export function ThemeToggle() {
 }
 
 function initials(name, email) {
-  const src = (name || email || '?').trim();
-  if (!src) return '?';
-  const parts = src.split(/\s+/).filter(Boolean);
+  const src = (name || email || 'U').trim();
+  const parts = src.split(/\s+/);
   if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  if (src.includes('@')) return src.slice(0, 2).toUpperCase();
   return src.slice(0, 2).toUpperCase();
 }
 
-function UserMenu() {
+function ProfileMenu() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
-  const label = useMemo(() => {
-    if (!user) return '';
-    return user.name || user.email;
-  }, [user]);
-
   useEffect(() => {
-    if (!open) return;
-    const onClick = (e) => {
-      if (!ref.current?.contains(e.target)) setOpen(false);
+    const onDoc = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
-    const onKey = (e) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('mousedown', onClick);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onClick);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open ]);
-
-  if (!user) return null;
-
-  const handleLogout = () => {
-    setOpen(false);
-    logout();
-    navigate('/');
-  };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, []);
 
   return (
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        aria-haspopup="menu"
+        aria-label="Profile menu"
         aria-expanded={open}
-        className={`flex max-w-64 items-center gap-2.5 rounded-xl border py-1.5 pl-1.5 pr-2.5 text-left transition-colors ${
-          open ? 'border-teal-400/50 bg-ink/10' : 'border-edge2 bg-ink/5 hover:border-teal-400/40 hover:bg-ink/10'
-        }`}
+        className="flex items-center gap-2 rounded-full border border-edge2 bg-ink/5 py-1 pl-1 pr-2 transition-colors hover:border-teal-400/50"
       >
-        <span
-          aria-hidden
-          className="grid size-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-teal-400 to-violet-500 text-xs font-bold text-black"
-        >
-          {initials(user.name, user.email)}
+        <span className="grid size-7 place-items-center rounded-full bg-gradient-to-br from-teal-400 to-violet-500 text-[11px] font-bold text-black">
+          {initials(user?.name, user?.email)}
         </span>
-        <span className="min-w-0 leading-tight">
-          <span className="block max-w-36 truncate text-sm font-semibold text-ink">{label}</span>
-          <span className="block max-w-36 truncate text-[11px] text-muted">{user.email}</span>
+        <span className="max-w-[110px] truncate text-xs font-medium text-body">
+          {user?.name || user?.email || 'Profile'}
         </span>
-        <ChevronDown size={14} className={`shrink-0 text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown size={14} className="text-muted" />
       </button>
-
       {open && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-50 mt-2 w-60 overflow-hidden rounded-xl border border-edge2 bg-panel shadow-xl"
-        >
+        <div className="absolute right-0 mt-2 w-60 overflow-hidden rounded-xl border border-edge bg-panel shadow-xl">
           <div className="border-b border-edge px-4 py-3">
-            <p className="truncate text-sm font-semibold text-ink">{user.name || 'Codexa user'}</p>
-            <p className="truncate text-xs text-muted">{user.email}</p>
-            {user.createdAt && (
-              <p className="mt-1 text-[11px] text-faint">
-                Member since {new Date(user.createdAt).toLocaleDateString()}
-              </p>
-            )}
+            <p className="truncate text-sm font-semibold text-ink">{user?.name || 'Coder'}</p>
+            <p className="truncate text-xs text-muted">{user?.email || ''}</p>
           </div>
           <div className="p-1.5">
-            <button
-              role="menuitem"
-              onClick={() => { setOpen(false); navigate('/dashboard'); }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-body transition-colors hover:bg-ink/5 hover:text-ink"
+            <Link
+              to="/studio"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-body hover:bg-ink/5 hover:text-ink"
             >
-              <LayoutDashboard size={15} className="text-muted" /> Dashboard
-            </button>
+              <FlaskConical size={15} /> My Studio
+            </Link>
             <button
-              role="menuitem"
-              onClick={() => { setOpen(false); navigate('/settings'); }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-body transition-colors hover:bg-ink/5 hover:text-ink"
-            >
-              <SettingsIcon size={15} className="text-muted" /> Account settings
-            </button>
-            <button
-              role="menuitem"
-              onClick={handleLogout}
-              className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-red-300 transition-colors hover:bg-red-500/10 light:text-red-700"
+              onClick={() => {
+                logout();
+                setOpen(false);
+                navigate('/');
+              }}
+              className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm text-body hover:bg-ink/5 hover:text-red-400"
             >
               <LogOut size={15} /> Log out
             </button>
@@ -141,20 +95,19 @@ function UserMenu() {
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
-  const { user, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const navigate = useNavigate();
-
   return (
-    <header className="sticky top-0 z-40 border-b border-edge bg-base/90 backdrop-blur">
+    <header className="nav-shell sticky top-0 z-40">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6">
         <Link to="/" className="flex items-center gap-2">
           <span className="grid size-9 place-items-center rounded-lg bg-gradient-to-br from-teal-400 to-violet-500 text-black">
             <Boxes size={20} strokeWidth={2.5} />
           </span>
           <span className="text-lg font-bold tracking-tight text-ink">
-            Codexa <span className="text-mint">AI</span>
+            Codexa
           </span>
-          <span className="ml-2 hidden rounded-full border border-ink/10 bg-ink/5 px-2 py-0.5 text-[11px] text-muted md:inline">
+          <span className="ml-1 hidden rounded-full border border-ink/10 bg-ink/5 px-2 py-0.5 text-[11px] text-muted md:inline">
             C · C++ · Java · Python
           </span>
         </Link>
@@ -177,17 +130,15 @@ export default function Navbar() {
 
         <div className="hidden items-center gap-2 md:flex">
           <ThemeToggle />
-          {user ? (
-            <UserMenu />
+          {isAuthenticated ? (
+            <ProfileMenu />
           ) : (
             <>
-              <Link to="/login">
-                <Button variant="ghost" size="sm">
-                  Log in
-                </Button>
+              <Link to="/login" className="rounded-lg px-3 py-2 text-sm text-muted hover:bg-ink/5 hover:text-ink">
+                Log in
               </Link>
               <Link to="/register">
-                <Button size="sm">Get Started</Button>
+                <Button size="sm">Sign up free</Button>
               </Link>
             </>
           )}
@@ -218,30 +169,26 @@ export default function Navbar() {
                 {l.label}
               </NavLink>
             ))}
-            {user ? (
+            {isAuthenticated ? (
               <>
-                <div className="mt-1 flex items-center gap-2.5 rounded-lg border border-edge2 bg-ink/5 px-3 py-2">
-                  <span
-                    aria-hidden
-                    className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-teal-400 to-violet-500 text-xs font-bold text-black"
-                  >
-                    {initials(user.name, user.email)}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-ink">{user.name || user.email}</span>
-                    <span className="block truncate text-[11px] text-muted">{user.email}</span>
-                  </span>
+                <div className="rounded-lg bg-ink/5 px-3 py-2 text-sm">
+                  <p className="truncate font-semibold text-ink">{user?.name || 'Coder'}</p>
+                  <p className="truncate text-xs text-muted">{user?.email || ''}</p>
                 </div>
                 <NavLink
-                  to="/settings"
+                  to="/studio"
                   onClick={() => setOpen(false)}
                   className="rounded-lg px-3 py-2 text-sm text-body hover:bg-ink/5 hover:text-ink"
                 >
-                  Account settings
+                  My Studio
                 </NavLink>
                 <button
-                  onClick={() => { setOpen(false); logout(); navigate('/'); }}
-                  className="rounded-lg px-3 py-2 text-left text-sm text-red-300 hover:bg-red-500/10 light:text-red-700"
+                  onClick={() => {
+                    logout();
+                    setOpen(false);
+                    navigate('/');
+                  }}
+                  className="rounded-lg px-3 py-2 text-left text-sm text-body hover:bg-ink/5"
                 >
                   Log out
                 </button>
@@ -258,9 +205,9 @@ export default function Navbar() {
                 <NavLink
                   to="/register"
                   onClick={() => setOpen(false)}
-                  className="rounded-lg px-3 py-2 text-sm text-body hover:bg-ink/5 hover:text-ink"
+                  className="rounded-lg bg-teal-400 px-3 py-2 text-sm font-medium text-black"
                 >
-                  Get Started
+                  Sign up free
                 </NavLink>
               </>
             )}

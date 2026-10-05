@@ -1,40 +1,40 @@
-# Codexa AI — Phases 1–10 complete + AI Studio & DSA Judge
+# Codexa — Compiler Design Lab
 
-Intelligent compiler analysis + AI coding tutor (MERN). This build ships **Phases 1–10 and beyond**:
-project scaffolding, design system, landing page, IDE shell layout, Express skeleton,
-docs, Monaco editor, lexer, parser, semantic analysis, three-address code generation,
-sandboxed compile + run (**C, C++, Java, Python, JavaScript** — with stdin), AI-powered
-error detective, verification with visual diffs/undo/redo/pipeline views, JWT authentication
-with MongoDB project persistence, **auto-recorded analysis history**, a **15-concept practice
-system**, an **AI Studio** (code generator, line-by-line explainer, debugger with verified
-fixes, optimizer), a **DSA judge** (15 problems, sample/edge/large tests, Accepted → Compilation
-Error verdicts), progressive hints, a learning assistant, and a real-data dashboard
-(solved, streak, languages, history, practice).
+An interactive Compiler Design learning app (MERN). Write code, generate code
+with AI, and analyze **your actual code** through every compiler phase — with an
+AI tutor beside you.
 
-## Architecture
+> Nothing is hardcoded. Change the code, and every result updates.
 
-- `frontend/` — React 19 + Vite 8 + Tailwind v4 + React Router (dev server on **port 2000**). Pages: Landing, Compiler
-  (IDE shell), AI Studio, Problems, Learn, Practice, Dashboard (real data), Settings (profile, password,
-  editor prefs, toolchains), Login/Register, Docs.
-- `backend/` — Express 4 API (port 5000). Health, compiler pipeline, sandboxed run, AI services
-  (offline-first, LLM-backed when `AI_API_KEY` is set), auth, projects, history, practice,
-  problems/judge, dashboard stats, toolchain status.
-- `compiler/` — educational C++ subset pipeline: lexer, parser + semantic, three-address code.
-- `docs/` — `architecture.md` (module map) and `api.md` (REST contract).
+## Features (8 only)
 
-## Prerequisites
+| # | Feature | What it does |
+|---|---------|--------------|
+| 1 | Code Editor | Write C, C++, Java or Python — syntax highlighting, line numbers, language selector, samples |
+| 2 | Lexical Analysis | Tokenizes your code: keywords, identifiers, operators, literals, separators — token table |
+| 3 | Syntax Analysis | Grammar check on your code: line, problem, and plain explanation of each error |
+| 4 | Parse Tree / AST | Interactive tree built from your code — click a node to highlight its source |
+| 5 | Semantic Analysis | Undeclared variables, type mismatches, scope errors — with line + explanation |
+| 6 | Code Optimization | Constant folding, propagation, dead-code removal, common-subexpression fixes — only when they apply |
+| 7 | AI Coding Tutor | Ask about your code or compiler concepts — simple hints, beginner-friendly |
+| 8 | AI Code Generation | Describe a program → code appears in the editor, ready to analyze and run |
 
-- Node.js ≥ 20, npm ≥ 10
-- MongoDB 8.x running locally (Windows service `MongoDB`); database `codexa`
-  is bootstrapped via `cd backend; npm run db:setup` (collections + validators + indexes,
-  including `submissions`)
-- Toolchains (optional per language — check with `cd backend; npm run toolchains`):
-  Clang/LLVM for C/C++, JDK 17+ for Java, Python 3.10+, Node.js 20+ for JavaScript.
-  Windows one-shot install: `cd backend; npm run toolchains:install`.
-  Missing toolchains produce a clear error message — output is never faked.
-- AI provider (optional) — for LLM-backed generation/explanations. Set `AI_API_KEY` in
-  `backend/.env` (OpenAI or any OpenAI-compatible provider). Without a key, AI features
-  run on built-in templates/heuristics and say so — responses are never faked.
+Plus **Run** (sandboxed execution with stdin) so generated or handwritten code can be executed.
+
+## How it works
+
+```
+Write code  →  OR generate with AI  →  Analyze
+  → Tokens → Syntax → AST → Semantics → Optimize → Run
+  → Ask the AI Tutor anything along the way
+```
+
+## Tech stack
+
+- **Frontend:** React + Vite + Tailwind CSS + Monaco Editor + React Flow (AST)
+- **Backend:** Node.js + Express (REST API)
+- **Database:** MongoDB (optional — app runs without it; persistence is out of scope for this build)
+- **AI:** OpenAI-compatible API via `AI_API_KEY` (offline templates when no key is set — responses say so)
 
 ## Run it
 
@@ -46,37 +46,28 @@ cd backend; npm install; npm run dev
 cd frontend; npm install; npm run dev
 ```
 
+Open http://localhost:2000 → **Open Studio**.
+
+## API (core)
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| POST | `/api/compiler/tokens` | Lexical analysis `{ sourceCode, language }` |
+| POST | `/api/compiler/ast` | Parse + semantic `{ ast, symbols, diagnostics }` |
+| POST | `/api/compiler/intermediate-code` | Full pipeline + diagnostics |
+| POST | `/api/compiler/optimize` | Optimizations for the actual code |
+| POST | `/api/run` | Sandboxed compile + run `{ sourceCode, language, stdin }` |
+| POST | `/api/ai/tutor` | Tutor Q&A `{ question, sourceCode }` |
+| POST | `/api/ai/generate` | Code generation `{ prompt, language }` |
+| GET  | `/api/ai/status` | Whether an LLM key is configured |
+| GET  | `/api/health` | Health check |
+
+Languages: `c`, `cpp`, `java`, `python`.
+
 ## Verify
 
 ```powershell
-# From repo root:
-node --test "compiler/tests/*.test.js"  # lexer + parser + semantic + TAC
-cd backend; npm test                    # 32 tests (health, tokens, ast, run, AI, phase 9–10)
-cd ../frontend; npm run build           # production build must succeed
-
-# To enable persistence features, start MongoDB and run:
-cd backend; npm run db:setup            # creates collections + indexes
+node --test "compiler/tests/*.test.js"
+cd backend; npm test
+cd ../frontend; npm run build
 ```
-
-## What works
-
-| Action | Behavior |
-|---|---|
-| Edit code / switch samples / Reset | Works locally, 5 languages |
-| Analyze | Full pipeline: tokens, AST, symbols, diagnostics, three-address code (C/C++ full; Java/Python/JS get tokens + honest limits) |
-| Run (+ stdin box) | Sandboxed compile + run in 5 languages with output capture |
-| AI Studio | Prompt → code, line-by-line explanations + complexity, debugger with verified fixes, optimizer with before/after |
-| Problems | 15 DSA problems, Run sample, Submit to judge, generated test cases, progressive hints 1–4 |
-| Learn | Concept Q&A with example + practice question |
-| Undo/Redo | Toolbar buttons + Ctrl+Z/Y |
-| Save (Ctrl+S) | Creates/updates a project in MongoDB (requires sign-in) |
-| History | Analyze/Run auto-recorded; shown on Dashboard recent activity |
-| Projects sidebar | Lists saved projects, click to load, trash icon to delete |
-| Practice | 15 concepts with picker, keyword-graded answers, attempts feed the dashboard |
-| Login / Register | Real JWT authentication via backend (requires MongoDB) |
-| Dashboard | Solved, success rate, streak, languages, difficulty progress, submissions, history, practice |
-| Settings | Profile, password change, theme, editor defaults, toolchain status, delete account |
-
-## Roadmap
-
-See `docs/architecture.md` and the in-app Docs page.

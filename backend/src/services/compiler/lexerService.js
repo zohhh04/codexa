@@ -8,9 +8,10 @@ const { tokenizeGeneric } = require('./genericLexer');
 
 function analyzeTokens(sourceCode, language = 'cpp') {
   const started = Date.now();
+  const normalized = language === 'js' ? 'javascript' : language;
   const { tokens, diagnostics } =
-    language === 'java' || language === 'python' || language === 'javascript' || language === 'js'
-      ? tokenizeGeneric(sourceCode, language === 'python' ? 'python' : 'java')
+    normalized === 'java' || normalized === 'python' || normalized === 'javascript'
+      ? tokenizeGeneric(sourceCode, normalized)
       : tokenize(sourceCode);
 
   const byType = {};

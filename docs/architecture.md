@@ -1,4 +1,4 @@
-# Codexa AI — Architecture (Phases 1–10 + AI Studio complete)
+# Codexa AI — Architecture (19-feature academic build, no extras)
 
 ```
 browser (React SPA)
@@ -9,20 +9,19 @@ Express (backend/src, :5000)
   ├─ routes/auth.js ............... Phase 9 ✅ (register/login/me/profile/password/delete)
   ├─ routes/compiler.js ........... Phases 3–5 ✅
   ├─ routes/run.js ................ Phase 6 ✅ (sandboxed compile + run, stdin, 5 languages)
-  ├─ routes/ai.js ................. Phase 7 ✅ + AI Studio ✅ (generate/explain-code/debug/optimize/testcases/learn/hints)
-  ├─ routes/history.js ............ Phase 9 ✅ (auto-recorded, ownership-checked)
-  ├─ routes/practice.js ........... Phase 10 ✅ (15 concepts, attempts)
-  ├─ routes/problems.js ........... DSA ✅ (15 problems, judge, submissions)
-  ├─ routes/dashboard.js .......... Phases 9–10 ✅ (stats: solved, streak, history, practice)
+  ├─ routes/ai.js ................. ✅ explain/fix/tutor/generate/learn/hints (offline-first; generator only)
+  ├─ routes/history.js ............ ✅ (auto-recorded, ownership-checked)
+  ├─ routes/practice.js ........... ✅ (concepts + mistake-based generation, attempts)
+  ├─ routes/dashboard.js .......... ✅ (analyses, errors, projects, practice — no DSA stats)
   ├─ routes/toolchain.js .......... ✅ (language availability probe)
-  ├─ services/compiler/* .......... lexer → parser → semantic → tac ✅ → sandbox ✅ (+stdin, JS)
-  ├─ services/ai/* ................ explain ✅ / fix ✅ / tutor ✅ + codegen/explain/debug/optimize/testcases/judge/learn ✅ (offline-first)
-  ├─ services/history/entry.js .... Phase 9 ✅ (light, truncated history entries)
-  ├─ services/practice/* .......... questionBank ✅ (15 concepts) + dsaBank ✅ (15 problems)
+  ├─ services/compiler/* .......... lexer → parser → semantic → tac ✅ → sandbox ✅ (+stdin, 5 langs)
+  ├─ services/ai/* ................ explain ✅ / fix ✅ / tutor ✅ / codegen ✅ / learn ✅ (offline-first)
+  ├─ services/history/entry.js .... ✅ (light, truncated history entries)
+  ├─ services/practice/* .......... questionBank ✅ (concepts)
   └─ middleware/errors.js ......... ✅ centralized 404 + error handler
 
 compiler/ ............ educational C++ subset pipeline (Phases 3–5) ✅ + grammar docs + tests
-frontend/src ......... components/ pages/ (Landing, Compiler, AIStudio, Problems, Learn, Practice, Dashboard, Settings, Docs, Auth) layouts/ hooks/ services/ context/ utils/
+frontend/src ......... components/ pages/ (Landing, Compiler, Code Generator, Tutor, Practice, Dashboard, Settings, Docs, Auth) layouts/ hooks/ services/ context/ utils/
 ```
 
 ## Key decisions

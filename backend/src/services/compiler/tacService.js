@@ -11,6 +11,7 @@ const { parse } = require('../../../../compiler/parser');
 const { analyze } = require('../../../../compiler/semantic');
 const { generateTAC } = require('../../../../compiler/intermediate');
 const { tokenizeGeneric } = require('./genericLexer');
+const { checkGenericSyntax, dedupDiagnostics, applyStdlibKnowledge } = require('./syntaxCheck');
 
 function countNodes(node) {
   if (!node || typeof node !== 'object') return 0;
@@ -33,19 +34,20 @@ function byPosition(a, b) {
 function fallbackTAC(sourceCode, language) {
   const started = Date.now();
   const { tokens, diagnostics: lex } = tokenizeGeneric(sourceCode, language);
+  const syn = checkGenericSyntax(sourceCode, language);
   const info = {
     phase: 'intermediate',
     source: 'codexa',
     severity: 'info',
     code: 'LANG_LIMIT',
     message:
-      'Three-address code generation is C/C++-only in v1 — Tokens and Run work for this language. TAC arrives later.',
+      'Three-address code generation is C/C++-only in v1 — Tokens, Syntax and Run above are real checks on your code.',
     line: 1,
     column: 1,
     endLine: 1,
     endColumn: 2,
   };
-  const diagnostics = [...lex, info].sort(byPosition);
+  const diagnostics = dedupDiagnostics([...lex, ...syn, info].sort(byPosition));
   const errors = diagnostics.filter((d) => d.severity === 'error').length;
   const warnings = diagnostics.filter((d) => d.severity === 'warning').length;
   return {
@@ -85,7 +87,9 @@ function analyzeTAC(sourceCode, language = 'cpp') {
     ? generateTAC(ast)
     : { instructions: [], diagnostics: [] };
 
-  const diagnostics = [...lex, ...syn, ...sem, ...tacDiags].sort(byPosition);
+  const diagnostics = dedupDiagnostics(
+    applyStdlibKnowledge(sourceCode, [...lex, ...syn, ...sem, ...tacDiags]).sort(byPosition),
+  );
   const errors = diagnostics.filter((d) => d.severity === 'error').length;
   const warnings = diagnostics.filter((d) => d.severity === 'warning').length;
 

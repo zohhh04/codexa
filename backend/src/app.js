@@ -12,7 +12,6 @@ const authRoutes = require('./routes/auth');
 const projectRoutes = require('./routes/projects');
 const historyRoutes = require('./routes/history');
 const practiceRoutes = require('./routes/practice');
-const problemsRoutes = require('./routes/problems');
 const dashboardRoutes = require('./routes/dashboard');
 const toolchainRoutes = require('./routes/toolchain');
 
@@ -37,8 +36,7 @@ function createApp() {
   app.use('/api/projects', projectRoutes);
   app.use('/api/history', historyRoutes);
   app.use('/api/practice', practiceRoutes);
-  // AI Studio: problems + judge, dashboard stats, toolchain status.
-  app.use('/api', problemsRoutes);
+  // Dashboard stats, toolchain status.
   app.use('/api', dashboardRoutes);
   app.use('/api', toolchainRoutes);
 

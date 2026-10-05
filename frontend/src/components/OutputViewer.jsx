@@ -62,7 +62,7 @@ export default function OutputViewer({ result, loading, error, stale, onRun }) {
       {!result && !loading && !error && (
         <EmptyState
           title="Ready to compile and run"
-          hint="Press Run (or use the toolbar button) to compile your code with Clang and execute it in a sandbox."
+          hint="Press Run to compile and execute your actual code in a sandbox (C/C++ via Clang, Java via JDK, Python 3, Node.js) with your stdin."
         />
       )}
 

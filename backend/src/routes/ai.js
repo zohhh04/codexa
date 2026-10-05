@@ -10,10 +10,6 @@ const { explainDiagnostic } = require('../services/ai/explainService');
 const { proposeFix } = require('../services/ai/fixService');
 const { getTutorHint } = require('../services/ai/tutorService');
 const { generateCode } = require('../services/ai/codegenService');
-const { explainCode } = require('../services/ai/codeExplainService');
-const { debugCode } = require('../services/ai/debugService');
-const { optimizeCode } = require('../services/ai/optimizeService');
-const { generateTestcases } = require('../services/ai/testcaseService');
 const { askConcept, getHint } = require('../services/ai/learnService');
 const { isAvailable } = require('../services/ai/client');
 
@@ -85,6 +81,15 @@ const fixBody = z.object({
     .max(200000, 'sourceCode too large'),
 });
 
+const tutorDiag = z.object({
+  phase: z.string().optional().default('general'),
+  severity: z.string().optional().default('info'),
+  code: z.string().optional().default(''),
+  message: z.string().optional().default(''),
+  line: z.number().optional().default(0),
+  column: z.number().optional().default(0),
+}).passthrough();
+
 const tutorBody = z.object({
   question: z
     .string({ error: 'question must be a string' })
@@ -95,6 +100,8 @@ const tutorBody = z.object({
     .max(200000, 'sourceCode too large')
     .optional()
     .default(''),
+  language: z.string().max(20).optional().default('cpp'),
+  diagnostics: z.array(tutorDiag).max(50).optional().default([]),
   context: z.string().max(2000).optional().default('general'),
 });
 
@@ -154,64 +161,6 @@ router.post('/generate', rateLimit, async (req, res) => {
     return ok(res, await generateCode(parsed.data));
   } catch (err) {
     return fail(res, `AI generate failed: ${err.message}`, 500);
-  }
-});
-
-// POST /api/ai/explain-code — line-by-line explanation + complexity
-router.post('/explain-code', rateLimit, async (req, res) => {
-  const parsed = z.object({
-    sourceCode: codeField,
-    language: LANG.optional().default('cpp'),
-    level: z.enum(['beginner', 'intermediate', 'advanced']).optional().default('beginner'),
-  }).safeParse(req.body);
-  if (!parsed.success) return fail(res, 'Invalid request body', 400, z.treeifyError(parsed.error));
-  try {
-    return ok(res, await explainCode(parsed.data));
-  } catch (err) {
-    return fail(res, `AI explain-code failed: ${err.message}`, 500);
-  }
-});
-
-// POST /api/ai/debug — faulty code -> errors + corrected code (verified by toolchain)
-router.post('/debug', rateLimit, async (req, res) => {
-  const parsed = z.object({
-    sourceCode: codeField,
-    language: LANG.optional().default('cpp'),
-    stdin: z.string().max(65536).optional().default(''),
-  }).safeParse(req.body);
-  if (!parsed.success) return fail(res, 'Invalid request body', 400, z.treeifyError(parsed.error));
-  try {
-    return ok(res, await debugCode(parsed.data));
-  } catch (err) {
-    return fail(res, `AI debug failed: ${err.message}`, 500);
-  }
-});
-
-// POST /api/ai/optimize — inefficient code -> suggestions + before/after
-router.post('/optimize', rateLimit, async (req, res) => {
-  const parsed = z.object({
-    sourceCode: codeField,
-    language: LANG.optional().default('cpp'),
-  }).safeParse(req.body);
-  if (!parsed.success) return fail(res, 'Invalid request body', 400, z.treeifyError(parsed.error));
-  try {
-    return ok(res, await optimizeCode(parsed.data));
-  } catch (err) {
-    return fail(res, `AI optimize failed: ${err.message}`, 500);
-  }
-});
-
-// POST /api/ai/testcases — problem -> sample/edge/large cases
-router.post('/testcases', rateLimit, async (req, res) => {
-  const parsed = z.object({
-    prompt: z.string().min(4).max(5000),
-    count: z.number().int().min(3).max(12).optional().default(6),
-  }).safeParse(req.body);
-  if (!parsed.success) return fail(res, 'Invalid request body', 400, z.treeifyError(parsed.error));
-  try {
-    return ok(res, await generateTestcases(parsed.data));
-  } catch (err) {
-    return fail(res, `AI testcases failed: ${err.message}`, 500);
   }
 });
 
